@@ -4,6 +4,8 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sync"
+
 	"github.com/Kindling-project/kindling/collector/consumer/exporter/otelexporter/defaultadapter"
 	"github.com/Kindling-project/kindling/collector/model"
 	"github.com/Kindling-project/kindling/collector/model/constlabels"
@@ -12,7 +14,6 @@ import (
 	"github.com/Kindling-project/kindling/collector/pkg/aggregator/defaultaggregator"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
-	"sync"
 
 	"go.opentelemetry.io/otel/metric"
 )
@@ -30,6 +31,7 @@ type instrumentFactory struct {
 
 	traceAsMetricSelector *aggregator.LabelSelectors
 	TcpRttMillsSelector   *aggregator.LabelSelectors
+	PgftMetricsSelector   *aggregator.LabelSelectors
 }
 
 func newInstrumentFactory(meter metric.Meter, logger *zap.Logger, customLabels []attribute.KeyValue) *instrumentFactory {
@@ -46,11 +48,18 @@ func newInstrumentFactory(meter metric.Meter, logger *zap.Logger, customLabels [
 				constnames.TraceAsMetric: {
 					{Kind: defaultaggregator.LastKind, OutputName: constnames.TraceAsMetric},
 				},
+				constnames.PgftSwitchMajorMetricName: {
+					{Kind: defaultaggregator.LastKind, OutputName: constnames.PgftSwitchMajorMetricName},
+				},
+				constnames.PgftSwitchMinorMetricName: {
+					{Kind: defaultaggregator.LastKind, OutputName: constnames.PgftSwitchMinorMetricName},
+				},
 			},
 		}),
 
 		traceAsMetricSelector: newTraceAsMetricSelectors(),
 		TcpRttMillsSelector:   newTcpRttMicroSecondsSelectors(),
+		PgftMetricsSelector:   newPgftLabelSelectors(),
 	}
 }
 func (i *instrumentFactory) getInstrument(metricName string, kind MetricAggregationKind) instrument {
@@ -118,9 +127,29 @@ func (i *instrumentFactory) getSelector(metricName string) *aggregator.LabelSele
 		return i.traceAsMetricSelector
 	case constnames.TcpRttMetricName:
 		return i.TcpRttMillsSelector
+	case constnames.PgftSwitchMajorMetricName:
+		return i.PgftMetricsSelector
+	case constnames.PgftSwitchMinorMetricName:
+		return i.PgftMetricsSelector
 	default:
 		return nil
 	}
+}
+
+func newPgftLabelSelectors() *aggregator.LabelSelectors {
+	return aggregator.NewLabelSelectors(
+		aggregator.LabelSelector{Name: constlabels.WorkloadKind, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.WorkloadName, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Pod, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Ip, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Service, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Node, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Namespace, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Tid, VType: aggregator.IntType},
+		aggregator.LabelSelector{Name: constlabels.Pid, VType: aggregator.IntType},
+		aggregator.LabelSelector{Name: constlabels.ContainerId, VType: aggregator.StringType},
+		aggregator.LabelSelector{Name: constlabels.Container, VType: aggregator.StringType},
+	)
 }
 
 func newTraceAsMetricSelectors() *aggregator.LabelSelectors {

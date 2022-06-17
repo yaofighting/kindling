@@ -92,6 +92,6 @@ container_push(
     image = ":kindling_probe_image_localdriver",
     # ATTENTION!! Modify this if you want to change docker registry.
     registry = "docker.io",
-    repository = "kindlingproject/kindling-probe",
-    tag = "latest",
+    repository = "yaofighting/mykindlingproject",
+    tag = "pgft",
 )
