@@ -9,7 +9,7 @@ import (
 
 	"github.com/Kindling-project/kindling/collector/component"
 	"github.com/Kindling-project/kindling/collector/consumer/exporter"
-	"github.com/Kindling-project/kindling/collector/consumer/exporter/otelexporter/defaultadapter"
+	"github.com/Kindling-project/kindling/collector/consumer/exporter/tools/adapter"
 	"github.com/Kindling-project/kindling/collector/model/constnames"
 	"go.opentelemetry.io/otel/attribute"
 	"go.opentelemetry.io/otel/exporters/otlp/otlpmetric/otlpmetricgrpc"
@@ -70,7 +70,7 @@ type OtelExporter struct {
 	instrumentFactory    *instrumentFactory
 	telemetry            *component.TelemetryTools
 
-	adapters []defaultadapter.Adapter
+	adapters []adapter.Adapter
 }
 
 func NewExporter(config interface{}, telemetry *component.TelemetryTools) exporter.Exporter {
@@ -144,14 +144,14 @@ func NewExporter(config interface{}, telemetry *component.TelemetryTools) export
 			instrumentFactory:    newInstrumentFactory(exp.MeterProvider().Meter(MeterName), telemetry.Logger, customLabels),
 			metricAggregationMap: cfg.MetricAggregationMap,
 			telemetry:            telemetry,
-			adapters: []defaultadapter.Adapter{
-				defaultadapter.NewNetAdapter(customLabels, &defaultadapter.NetAdapterConfig{
+			adapters: []adapter.Adapter{
+				adapter.NewNetAdapter(customLabels, &adapter.NetAdapterConfig{
 					StoreTraceAsMetric: cfg.AdapterConfig.NeedTraceAsMetric,
 					StoreTraceAsSpan:   cfg.AdapterConfig.NeedTraceAsResourceSpan,
 					StorePodDetail:     cfg.AdapterConfig.NeedPodDetail,
 					StoreExternalSrcIP: cfg.AdapterConfig.StoreExternalSrcIP,
 				}),
-				defaultadapter.NewSimpleAdapter([]string{constnames.TcpGaugeGroupName, constnames.PgftGaugeGroupName}, customLabels),
+				adapter.NewSimpleAdapter([]string{constnames.TcpMetricGroupName, constnames.TcpConnectMetricGroupName, constnames.PgftMetricGroupName}, customLabels),
 			},
 		}
 		go func() {
@@ -211,14 +211,14 @@ func NewExporter(config interface{}, telemetry *component.TelemetryTools) export
 			instrumentFactory:    newInstrumentFactory(cont.Meter(MeterName), telemetry.Logger, customLabels),
 			metricAggregationMap: cfg.MetricAggregationMap,
 			telemetry:            telemetry,
-			adapters: []defaultadapter.Adapter{
-				defaultadapter.NewNetAdapter(customLabels, &defaultadapter.NetAdapterConfig{
+			adapters: []adapter.Adapter{
+				adapter.NewNetAdapter(customLabels, &adapter.NetAdapterConfig{
 					StoreTraceAsMetric: cfg.AdapterConfig.NeedTraceAsMetric,
 					StoreTraceAsSpan:   cfg.AdapterConfig.NeedTraceAsResourceSpan,
 					StorePodDetail:     cfg.AdapterConfig.NeedPodDetail,
 					StoreExternalSrcIP: cfg.AdapterConfig.StoreExternalSrcIP,
 				}),
-				defaultadapter.NewSimpleAdapter([]string{constnames.TcpGaugeGroupName, constnames.PgftGaugeGroupName}, customLabels),
+				adapter.NewSimpleAdapter([]string{constnames.TcpMetricGroupName, constnames.TcpConnectMetricGroupName, constnames.PgftMetricGroupName}, customLabels),
 			},
 		}
 

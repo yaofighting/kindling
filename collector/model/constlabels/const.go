@@ -50,6 +50,8 @@ const (
 	Ip              = "ip"
 	Port            = "port"
 
+	Errno           = "errno"
+	Success         = "success"
 	RequestContent  = "request_content"
 	ResponseContent = "response_content"
 	StatusCode      = "status_code"
@@ -97,17 +99,16 @@ const (
 	SpanMysqlErrorCode = "mysql.error_code"
 	SpanMysqlErrorMsg  = "mysql.error_msg"
 
-	SpanDubboErrorCode       = "dubbo.error_code"
-	SpanDubboRequestBody     = "dubbo.request_body"
-	SpanDubboResponseBody    = "dubbo.response_body"
-	NetWorkAnalyzeGaugeGroup = "netAnalyzeGauges"
-
-	NextPid = "next"
 	PgftMaj = "pgft_maj"
 	PgftMin = "pgft_min"
 	VmSize  = "vm_size"
 	VmRss   = "vm_rss"
 	VmSwap  = "vm_swap"
+	SpanDubboErrorCode    = "dubbo.error_code"
+	SpanDubboRequestBody  = "dubbo.request_body"
+	SpanDubboResponseBody = "dubbo.response_body"
+
+	NetWorkAnalyzeMetricGroup = "netAnalyzeMetrics"
 )
 const (
 	STR_EMPTY = ""

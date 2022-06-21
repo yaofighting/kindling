@@ -20,7 +20,7 @@ const (
 
 var consumableEvents = map[string]bool{
 	constnames.PageFaultEvent: true,
-}
+} 
 
 type PgftMetricAnalyzer struct {
 	consumers []consumer.Consumer
@@ -39,17 +39,23 @@ func (a *PgftMetricAnalyzer) Start() error {
 	return nil
 }
 
+func (a *PgftMetricAnalyzer) ConsumableEvents() []string {
+	return []string{
+		constnames.PageFaultEvent,
+	}
+}
+
 // ConsumeEvent gets the event from the previous component
 func (a *PgftMetricAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	_, ok := consumableEvents[event.Name]
 	if !ok {
 		return nil
 	}
-	var gaugeGroup *model.GaugeGroup
+	var dataGroup *model.DataGroup
 	var err error
 	switch event.Name {
 	case constnames.PageFaultEvent:
-		gaugeGroup, err = a.generatePageFault(event)
+		dataGroup, err = a.generatePageFault(event)
 	}
 	if err != nil {
 		if ce := a.telemetry.Logger.Check(zapcore.DebugLevel, "Event Skip, "); ce != nil {
@@ -59,12 +65,12 @@ func (a *PgftMetricAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 		}
 		return nil
 	}
-	if gaugeGroup == nil {
+	if dataGroup == nil {
 		return nil
 	}
 	var retError error
 	for _, nextConsumer := range a.consumers {
-		err := nextConsumer.Consume(gaugeGroup)
+		err := nextConsumer.Consume(dataGroup)
 		if err != nil {
 			retError = multierror.Append(retError, err)
 		}
@@ -72,7 +78,7 @@ func (a *PgftMetricAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	return retError
 }
 
-func (a *PgftMetricAnalyzer) generatePageFault(event *model.KindlingEvent) (*model.GaugeGroup, error) {
+func (a *PgftMetricAnalyzer) generatePageFault(event *model.KindlingEvent) (*model.DataGroup, error) {
 	labels, err := a.getPageFaultLabels(event)
 	if err != nil {
 		return nil, err
@@ -80,27 +86,20 @@ func (a *PgftMetricAnalyzer) generatePageFault(event *model.KindlingEvent) (*mod
 
 	pgftMaj := event.GetUserAttribute("pgft_maj")
 	pgftMin := event.GetUserAttribute("pgft_min")
-	ptMaj := (int64)(pgftMaj.GetUintValue())
-	ptMin := (int64)(pgftMin.GetUintValue())
+	ptMaj := pgftMaj.GetUintValue()
+	ptMin := pgftMin.GetUintValue()
 
-	var gaugeSlice []*model.Gauge
-	gaugeMaj := &model.Gauge{
-		Name:  constnames.PgftMajorMetricName,
-		Value: ptMaj,
-	}
-
-	gaugeMin := &model.Gauge{
-		Name:  constnames.PgftMinorMetricName,
-		Value: ptMin,
-	}
-	if ptMaj != 0 {
-		gaugeSlice = append(gaugeSlice, gaugeMaj)
+	dataMaj := model.NewIntMetric(constnames.PgftMajorMetricName, int64(ptMaj))
+	dataMin := model.NewIntMetric(constnames.PgftMinorMetricName, int64(ptMin))
+	var dataSlice []*model.Metric
+	if ptMaj != 0{
+		dataSlice = append(dataSlice, dataMaj)
 	}
 	if ptMin != 0 {
-		gaugeSlice = append(gaugeSlice, gaugeMin)
+		dataSlice = append(dataSlice, dataMin)
 	}
 
-	return model.NewGaugeGroup(constnames.PgftGaugeGroupName, labels, event.Timestamp, gaugeSlice...), nil
+	return model.NewDataGroup(constnames.PgftMetricGroupName, labels, event.Timestamp, dataSlice...), nil
 }
 
 func (a *PgftMetricAnalyzer) getPageFaultLabels(event *model.KindlingEvent) (*model.AttributeMap, error) {

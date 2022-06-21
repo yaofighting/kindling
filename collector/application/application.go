@@ -9,6 +9,7 @@ import (
 	"github.com/Kindling-project/kindling/collector/analyzer"
 	"github.com/Kindling-project/kindling/collector/analyzer/loganalyzer"
 	"github.com/Kindling-project/kindling/collector/analyzer/network"
+	"github.com/Kindling-project/kindling/collector/analyzer/tcpconnectanalyzer"
 	"github.com/Kindling-project/kindling/collector/analyzer/tcpmetricanalyzer"
 	"github.com/Kindling-project/kindling/collector/component"
 	"github.com/Kindling-project/kindling/collector/consumer"
@@ -27,7 +28,7 @@ type Application struct {
 	componentsFactory *ComponentsFactory
 	telemetry         *component.TelemetryManager
 	receiver          receiver.Receiver
-	analyzerManager   analyzer.Manager
+	analyzerManager   *analyzer.Manager
 }
 
 func New() (*Application, error) {
@@ -84,6 +85,7 @@ func (a *Application) registerFactory() {
 	a.componentsFactory.RegisterProcessor(aggregateprocessor.Type, aggregateprocessor.New, aggregateprocessor.NewDefaultConfig())
 	a.componentsFactory.RegisterAnalyzer(pgftmetricanalyzer.PgftMetric.String(), pgftmetricanalyzer.NewPgftMetricAnalyzer, &pgftmetricanalyzer.Config{})
 
+	a.componentsFactory.RegisterAnalyzer(tcpconnectanalyzer.Type.String(), tcpconnectanalyzer.New, tcpconnectanalyzer.NewDefaultConfig())
 }
 
 func (a *Application) readInConfig(path string) error {
@@ -107,7 +109,7 @@ func (a *Application) buildPipeline() error {
 	otelExporterFactory := a.componentsFactory.Exporters[otelexporter.Otel]
 	otelExporter := otelExporterFactory.NewFunc(otelExporterFactory.Config, a.telemetry.Telemetry)
 	// Initialize all processors
-	// 1. GaugeGroup Aggregator
+	// 1. DataGroup Aggregator
 	aggregateProcessorFactory := a.componentsFactory.Processors[aggregateprocessor.Type]
 	aggregateProcessor := aggregateProcessorFactory.NewFunc(aggregateProcessorFactory.Config, a.telemetry.Telemetry, otelExporter)
 	// 2. Kubernetes metadata processor
@@ -130,7 +132,10 @@ func (a *Application) buildPipeline() error {
 	pgftAnalyzer := pgftAnalyzerFactory.NewFunc(pgftAnalyzerFactory.Config, a.telemetry.Telemetry, []consumer.Consumer{k8sMetadataProcessor})
 
 	// Initialize receiver packaged with multiple analyzers
-	analyzerManager, err := analyzer.NewManager(networkAnalyzer, tcpAnalyzer, pgftAnalyzer)
+	tcpConnectAnalyzerFactory := a.componentsFactory.Analyzers[tcpconnectanalyzer.Type.String()]
+	tcpConnectAnalyzer := tcpConnectAnalyzerFactory.NewFunc(tcpConnectAnalyzerFactory.Config, a.telemetry.Telemetry, []consumer.Consumer{k8sMetadataProcessor})
+	// Initialize receiver packaged with multiple analyzers
+	analyzerManager, err := analyzer.NewManager(networkAnalyzer, tcpAnalyzer, tcpConnectAnalyzer, pgftAnalyzer)
 	if err != nil {
 		return fmt.Errorf("error happened while creating analyzer manager: %w", err)
 	}
