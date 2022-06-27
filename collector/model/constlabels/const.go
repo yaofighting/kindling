@@ -8,6 +8,7 @@ const (
 )
 
 const (
+	Comm            = "comm"
 	Pid             = "pid"
 	Tid             = "tid"
 	Protocol        = "protocol"
