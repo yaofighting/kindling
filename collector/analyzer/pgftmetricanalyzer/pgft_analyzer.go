@@ -86,6 +86,9 @@ func (a *PgftMetricAnalyzer) generatePageFault(event *model.KindlingEvent) (*mod
 
 	pgftMaj := event.GetUserAttribute("pgft_maj")
 	pgftMin := event.GetUserAttribute("pgft_min")
+	if(pgftMaj == nil || pgftMin == nil){
+		return nil, fmt.Errorf("the page fault major or minor value is null %s", event.Name)
+	}
 	ptMaj := pgftMaj.GetUintValue()
 	ptMin := pgftMin.GetUintValue()
 
