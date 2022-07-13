@@ -1,10 +1,9 @@
 .idea/
-/probe/build
- 
-
-logs
-*.log
-
-.env
 .vscode/
-*.sw*
+
+build/
+probe/src/probe/cmake-build-debug/
+probe/build/
+
+*.log
+logs
