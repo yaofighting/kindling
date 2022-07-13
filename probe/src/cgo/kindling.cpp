@@ -7,12 +7,14 @@
 #include "sinsp_capture_interrupt_exception.h"
 #include <iostream>
 #include <cstdlib>
+#include <chrono>
 
 static sinsp *inspector = nullptr;
 
-int cnt = 0;
+int page_fault_total;
 map<string, ppm_event_type> m_events;
 map<string, Category> m_categories;
+unordered_map<int64_t, threadinfo_map_t::ptr_t> threadstable;
 int16_t event_filters[1024][16];
 
 void init_sub_label()
@@ -36,7 +38,7 @@ void init_sub_label()
 
 void sub_event(char *eventName, char *category)
 {
-	cout << "sub event name:" << eventName << "  &&  category:" << category << endl;
+	cout << "sub event name: " << eventName << "  &&  category: " << category << endl;
 	auto it_type = m_events.find(eventName);
 	if(it_type != m_events.end())
 	{
@@ -44,6 +46,7 @@ void sub_event(char *eventName, char *category)
 			inspector->enable_page_faults();
 			inspector->set_eventmask(PPME_PAGE_FAULT_X);
 			inspector->set_eventmask(PPME_PAGE_FAULT_E);
+			initPageFaultOffData();
 		}
 		if(category == nullptr || category[0] == '\0')
 		{
@@ -132,6 +135,89 @@ void init_probe()
 	}
 }
 
+/* convert process information to main thread information.
+	The page fault data we want is limited to thread granularity.*/
+void convertThreadsTable(){
+	unordered_map<int64_t, int64_t> maj_mp, min_mp; //from pid to maj or min value
+	
+	for(auto e: threadstable){
+		sinsp_threadinfo* tmp = e.second.get();
+        if(tmp->m_pid == tmp->m_tid) continue;
+        maj_mp[tmp->m_pid] += tmp->m_pfmajor;
+        min_mp[tmp->m_pid] += tmp->m_pfminor;
+	}
+    for(auto e: min_mp){
+        auto tmp = threadstable.find(e.first);
+        sinsp_threadinfo* temp = inspector->build_threadinfo();
+        temp->m_pid = temp->m_tid = e.first;
+        temp->m_pfminor = tmp->second->m_pfminor - e.second;
+        temp->m_pfmajor = tmp->second->m_pfmajor - maj_mp[e.first];
+        threadstable[temp->m_tid] = threadinfo_map_t::ptr_t(temp);
+    }
+	cout << "total number of threads initialized is " << threadstable.size() << endl;
+}
+
+int getPageFaultThreadEvent(void **pp_kindling_event){
+	static unordered_map<int64_t, threadinfo_map_t::ptr_t>::iterator it = threadstable.begin();
+	if(it == threadstable.end()){
+		return -1;
+	}
+	sinsp_threadinfo* threadInfo = it->second.get();
+	it++;
+	kindling_event_t_for_go *p_kindling_event;
+	if(nullptr == *pp_kindling_event)
+	{
+		*pp_kindling_event = (kindling_event_t_for_go *)malloc(sizeof(kindling_event_t_for_go));
+		p_kindling_event = (kindling_event_t_for_go *)*pp_kindling_event;
+
+		p_kindling_event->name = (char *)malloc(sizeof(char) * 1024);
+		p_kindling_event->context.tinfo.comm = (char *)malloc(sizeof(char) * 256);
+		p_kindling_event->context.tinfo.containerId = (char *)malloc(sizeof(char) * 256);
+		p_kindling_event->context.fdInfo.filename = (char *)malloc(sizeof(char) * 1024);
+		p_kindling_event->context.fdInfo.directory = (char *)malloc(sizeof(char) * 1024);
+
+		for(int i = 0; i < 2; i++)
+		{
+			p_kindling_event->userAttributes[i].key = (char *)malloc(sizeof(char) * 128);
+			p_kindling_event->userAttributes[i].value = (char *)malloc(sizeof(char) * 1024);
+		}
+	}
+	p_kindling_event = (kindling_event_t_for_go *)*pp_kindling_event;
+
+	chrono::nanoseconds ns = std::chrono::duration_cast< std::chrono::nanoseconds>(
+		std::chrono::system_clock::now().time_since_epoch()
+	);
+	p_kindling_event->timestamp = ns.count();
+
+	p_kindling_event->context.tinfo.pid = threadInfo->m_pid;
+	p_kindling_event->context.tinfo.tid = threadInfo->m_tid;
+	p_kindling_event->context.tinfo.uid = threadInfo->m_uid;
+	p_kindling_event->context.tinfo.gid = threadInfo->m_gid;
+
+	strcpy(p_kindling_event->userAttributes[0].key, "pgft_maj");
+	memcpy(p_kindling_event->userAttributes[0].value, &threadInfo->m_pfmajor, 8);
+	p_kindling_event->userAttributes[0].valueType = UINT64;
+	p_kindling_event->userAttributes[0].len = 8;
+
+	strcpy(p_kindling_event->userAttributes[1].key, "pgft_min");
+	memcpy(p_kindling_event->userAttributes[1].value, &threadInfo->m_pfminor, 8);
+	p_kindling_event->userAttributes[1].valueType = UINT64;
+	p_kindling_event->userAttributes[1].len = 8;
+
+	p_kindling_event->paramsNumber = 2;
+	strcpy(p_kindling_event->context.tinfo.comm, (char *)threadInfo->m_comm.data());
+	strcpy(p_kindling_event->context.tinfo.containerId, (char *)threadInfo->m_container_id.data());
+	strcpy(p_kindling_event->name, "page_fault");
+
+	return 1;
+}
+
+void initPageFaultOffData(){
+	threadinfo_map_t *threadsmap = inspector->m_thread_manager->get_threads();
+    threadstable = threadsmap->getThreadsTable();
+
+	convertThreadsTable();
+}
 int getEvent(void **pp_kindling_event)
 {
 	int32_t res;
@@ -149,6 +235,14 @@ int getEvent(void **pp_kindling_event)
 	   ev->get_category() & EC_INTERNAL)
 	{
 		return -1;
+	}
+	if(ev->get_type() == PPME_PAGE_FAULT_E){
+		page_fault_total++;
+		if(page_fault_total >= 1000000){
+			cout << "clear the page fault map..." << endl;
+			inspector->clear_page_faults_map();
+			page_fault_total = 0;
+		}
 	}
 	auto threadInfo = ev->get_thread_info();
 	if(threadInfo == nullptr)

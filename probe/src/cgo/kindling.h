@@ -7,6 +7,11 @@
 #include "sinsp.h"
 
 void init_probe();
+/* convert process information to main thread information.
+	The page fault data we want is limited to thread granularity.*/
+void convertThreadsTable();
+void initPageFaultOffData();
+int getPageFaultThreadEvent(void **kindlingEvent);
 int getEvent(void **kindlingEvent);
 uint16_t get_kindling_category(sinsp_evt *sEvt);
 void init_sub_label();
