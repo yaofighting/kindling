@@ -12,7 +12,6 @@
 static sinsp *inspector = nullptr;
 sinsp_evt_formatter *formatter = nullptr;
 bool printEvent = false;
-int page_fault_total = 0;
 map<string, ppm_event_type> m_events;
 map<string, Category> m_categories;
 unordered_map<int64_t, threadinfo_map_t::ptr_t> threadstable;
@@ -222,6 +221,12 @@ void initPageFaultOffData(){
     threadstable = threadsmap->getThreadsTable();
 
 	convertThreadsTable();
+
+	for(auto e: threadstable){
+		sinsp_threadinfo* tmp = e.second.get();
+        inspector->update_pagefaults_threads_number(tmp->m_tid, tmp->m_pfmajor);
+	}
+	inspector->update_pagefaults_threads_number(-1, threadstable.size());
 }
 int getEvent(void **pp_kindling_event)
 {
@@ -242,11 +247,10 @@ int getEvent(void **pp_kindling_event)
 		return -1;
 	}
 	if(ev->get_type() == PPME_PAGE_FAULT_E){
-		page_fault_total++;
-		if(page_fault_total >= 1000000){
-			cout << "clear the page fault map..." << endl;
+		int num = inspector->get_pagefault_threads_number();
+		if(num >= 1e6){
+			cout << "clear the page fault map with " << num << " threads..." << endl;
 			inspector->clear_page_faults_map();
-			page_fault_total = 0;
 		}
 	}
 	auto threadInfo = ev->get_thread_info();

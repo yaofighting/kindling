@@ -111,9 +111,6 @@ func (a *Application) buildPipeline() error {
 	// TODO: Build pipeline via configuration to implement dependency injection
 	// Initialize exporters
 	otelExporterFactory := a.componentsFactory.Exporters[otelexporter.Otel]
-	//prometheusFactory := a.componentsFactory.Exporters[prometheusexporter.Type]
-	//prometheusExporter := prometheusFactory.NewFunc(prometheusFactory.Config, a.telemetry.Telemetry)
-	//prometheusExporterFactory := a.componentsFactory.Exporters[otelexporter.Otel]
 	otelExporter := otelExporterFactory.NewFunc(otelExporterFactory.Config, a.telemetry.Telemetry)
 	// Initialize all processors
 	// 1. DataGroup Aggregator

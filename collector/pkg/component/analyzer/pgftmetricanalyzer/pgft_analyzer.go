@@ -19,10 +19,6 @@ const (
 	PgftMetric analyzer.Type = "pgftmetricanalyzer"
 )
 
-var consumableEvents = map[string]bool{
-	constnames.PageFaultEvent: true,
-}
-
 type PgftMetricAnalyzer struct {
 	consumers []consumer.Consumer
 	telemetry *component.TelemetryTools
@@ -46,28 +42,12 @@ func (a *PgftMetricAnalyzer) ConsumableEvents() []string {
 	}
 }
 
-var cnt int = 0
-var pageCnt int = 0
-
 // ConsumeEvent gets the event from the previous component
 func (a *PgftMetricAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
-	_, ok := consumableEvents[event.Name]
-	if !ok {
-		return nil
-	}
-	if cnt%10 == 0 {
-		a.telemetry.Logger.Info("enter_consume: ", zap.Int("number:", cnt))
-	}
-	cnt++
 	var dataGroup *model.DataGroup
 	var err error
-	switch event.Name {
-	case constnames.PageFaultEvent:
+	if event.Name == constnames.PageFaultEvent {
 		dataGroup, err = a.generatePageFault(event)
-		if pageCnt%10 == 0 {
-			a.telemetry.Logger.Info("Cosume page fault: ", zap.Int("num:", pageCnt))
-		}
-		pageCnt++
 	}
 	if err != nil {
 		if ce := a.telemetry.Logger.Check(zapcore.DebugLevel, "Event Skip, "); ce != nil {
