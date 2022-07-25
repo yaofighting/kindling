@@ -11,7 +11,7 @@ extern "C" {
 void runForGo();
 int getKindlingEvent(void **kindlingEvent);
 int getPageFaultInitEvent(void **kindlingEvent);
-int subEventForGo(char* eventName, char* category);
+int subEventForGo(char* eventName, char* category, int params[]);
 #ifdef __cplusplus
 }
 

@@ -249,6 +249,10 @@ func (x *KindlingEvent) IsTcp() bool {
 	return fd.GetProtocol() == L4Proto_TCP
 }
 
+func (x *KindlingEvent) IsSlowSyscall() bool {
+	return x.SlowSyscall
+}
+
 func (x *KindlingEvent) IsConnect() bool {
 	return x.Name == "connect"
 }

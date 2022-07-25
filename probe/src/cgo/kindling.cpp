@@ -8,6 +8,7 @@
 #include <iostream>
 #include <cstdlib>
 #include <chrono>
+#include "slow_syscall.h"
 
 static sinsp *inspector = nullptr;
 sinsp_evt_formatter *formatter = nullptr;
@@ -16,6 +17,7 @@ map<string, ppm_event_type> m_events;
 map<string, Category> m_categories;
 unordered_map<int64_t, threadinfo_map_t::ptr_t> threadstable;
 int16_t event_filters[1024][16];
+slow_syscall slow;
 
 void init_sub_label()
 {
@@ -36,7 +38,8 @@ void init_sub_label()
 	}
 }
 
-void sub_event(char *eventName, char *category)
+
+void sub_event(char *eventName, char *category, int params[])
 {
 	cout << "sub event name: " << eventName << "  &&  category: " << category << endl;
 	auto it_type = m_events.find(eventName);
@@ -48,6 +51,7 @@ void sub_event(char *eventName, char *category)
 			inspector->set_eventmask(PPME_PAGE_FAULT_E);
 			initPageFaultOffData();
 		}
+		
 		if(category == nullptr || category[0] == '\0')
 		{
 			for(int j = 0; j < 16; j++)
@@ -362,11 +366,22 @@ int getEvent(void **pp_kindling_event)
 
 	uint16_t userAttNumber = 0;
 	uint16_t source = get_kindling_source(ev->get_type());
+	p_kindling_event->slow_syscall = false;
 	if(source == SYSCALL_EXIT) {
 		strcpy(p_kindling_event->userAttributes[userAttNumber].key, "latency");
 		memcpy(p_kindling_event->userAttributes[userAttNumber].value, to_string(threadInfo->m_latency).data(), 8);
 		p_kindling_event->userAttributes[userAttNumber].valueType = UINT64;
 		p_kindling_event->userAttributes[userAttNumber].len = 8;
+		bool exist = slow.getTidExist(threadInfo->m_tid);
+		if(exist){
+			slow.erase(threadInfo->m_tid);
+		}
+	}else if(source == SYSCALL_ENTER){
+		bool exist = slow.getTidExist(threadInfo->m_tid);
+		SyscallElem tmp;
+		tmp.timestamp = ev->get_ts();
+		tmp.type = ev->get_type();
+		slow.insert(threadInfo->m_tid, tmp);
 	}
 	userAttNumber++;
 	switch(ev->get_type())
@@ -621,7 +636,6 @@ uint16_t get_kindling_source(uint16_t etype) {
 	if (PPME_IS_ENTER(etype)) {
 		switch (etype) {
 			case PPME_PROCEXIT_E:
-			case PPME_SCHEDSWITCH_6_E:
 			case PPME_SYSDIGEVENT_E:
 			case PPME_CONTAINER_E:
 			case PPME_PROCINFO_E:
@@ -635,13 +649,23 @@ uint16_t get_kindling_source(uint16_t etype) {
 			case PPME_CONTAINER_JSON_E:
 			case PPME_NOTIFICATION_E:
 			case PPME_INFRASTRUCTURE_EVENT_E:
-			case PPME_PAGE_FAULT_E:
+			case PPME_SCHEDSWITCH_6_E:
 				return SOURCE_UNKNOWN;
 			case PPME_TCP_RCV_ESTABLISHED_E:
 			case PPME_TCP_CLOSE_E:
 			case PPME_TCP_DROP_E:
 			case PPME_TCP_RETRANCESMIT_SKB_E:
+			case PPME_TCP_SET_STATE_E:
 				return KRPOBE;
+			case PPME_SIGNALDELIVER_E:
+			case PPME_NETIF_RECEIVE_SKB_E:
+			case PPME_NET_DEV_XMIT_E:
+			case PPME_TCP_SEND_RESET_E:
+			case PPME_TCP_RECEIVE_RESET_E:
+			case PPME_PAGE_FAULT_E:
+				return TRACEPOINT;
+
+
 				// TODO add cases of tracepoint, kprobe, uprobe
 			default:
 				return SYSCALL_ENTER;
@@ -659,9 +683,13 @@ uint16_t get_kindling_source(uint16_t etype) {
 			case PPME_CONTAINER_JSON_X:
 			case PPME_NOTIFICATION_X:
 			case PPME_INFRASTRUCTURE_EVENT_X:
-			case PPME_PAGE_FAULT_X:
 				return SOURCE_UNKNOWN;
+			case PPME_SIGNALDELIVER_X:
+			case PPME_PAGE_FAULT_X:
+				return TRACEPOINT;
 				// TODO add cases of tracepoint, kprobe, uprobe
+			case PPME_TCP_CONNECT_X:
+				return KRETPROBE;
 			default:
 				return SYSCALL_EXIT;
 		}

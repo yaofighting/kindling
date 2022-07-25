@@ -207,6 +207,6 @@ func (r *CgoReceiver) subEvent() {
 		r.telemetry.Logger.Sugar().Infof("The subscribed events are: %v", r.cfg.SubscribeInfo)
 	}
 	for _, value := range r.cfg.SubscribeInfo {
-		C.subEventForGo(C.CString(value.Name), C.CString(value.Category))
+		C.subEventForGo(C.CString(value.Name), C.CString(value.Category), value.Params)
 	}
 }

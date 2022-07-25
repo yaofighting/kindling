@@ -5,6 +5,7 @@ type Config struct {
 }
 
 type SubEvent struct {
+	Params   []int  `mapstructure:"params"`
 	Category string `mapstructure:"category"`
 	Name     string `mapstructure:"name"`
 }

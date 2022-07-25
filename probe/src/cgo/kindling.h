@@ -15,7 +15,7 @@ int getPageFaultThreadEvent(void **kindlingEvent);
 int getEvent(void **kindlingEvent);
 uint16_t get_kindling_category(sinsp_evt *sEvt);
 void init_sub_label();
-void sub_event(char* eventName, char* category);
+void sub_event(char* eventName, char* category, int params[]);
 uint16_t get_protocol(scap_l4_proto proto);
 uint16_t get_type(ppm_param_type type);
 uint16_t get_kindling_source(uint16_t etype);
@@ -29,6 +29,7 @@ struct kindling_event_t_for_go{
 	char *name;
 	uint32_t category;
 	uint16_t paramsNumber;
+	bool slow_syscall;
     struct KeyValue {
 	char *key;
 	char* value;
