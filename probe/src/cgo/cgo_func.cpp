@@ -18,6 +18,11 @@ int getPageFaultInitEvent(void **kindlingEvent){
 	return getPageFaultThreadEvent(kindlingEvent);
 }
 
-void subEventForGo(char* eventName, char* category, int params[]){
-	sub_event(eventName, category, params);
+int getSlowSyscallTimeoutEvent(void **kindlingEvent){
+	return getSyscallTimeoutEvent(kindlingEvent);
 }
+
+void subEventForGo(char* eventName, char* category, void *params){
+	sub_event(eventName, category, (event_params_for_subscribe *)params);
+}
+

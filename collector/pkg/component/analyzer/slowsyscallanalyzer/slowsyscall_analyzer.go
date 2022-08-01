@@ -3,6 +3,7 @@ package slowsyscallanalyzer
 import (
 	"fmt"
 	"os"
+	"strings"
 
 	"github.com/Kindling-project/kindling/collector/pkg/component"
 	"github.com/Kindling-project/kindling/collector/pkg/component/analyzer"
@@ -46,8 +47,15 @@ func (a *SlowSyscallAnalyzer) ConsumableEvents() []string {
 func (a *SlowSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	var dataGroup *model.DataGroup
 	var err error
-	if event.IsSlowSyscall() {
+	if event.GetSlowSyscallCode() > 0 {
 		dataGroup, err = a.generateSlowSyscall(event)
+		a.telemetry.Logger.Sugar().Info("enter the slow syscall analyzer & SlowSyscall code: %d...", event.GetSlowSyscallCode())
+	}
+
+	strArr := strings.Split(event.Name, ":")
+	if len(strArr) > 1 && strArr[0] == "timeout" {
+		a.telemetry.Logger.Info("start to analyze the timeout_syscall...")
+		event.Name = strArr[2]
 	}
 
 	if err != nil {
@@ -84,7 +92,7 @@ func (a *SlowSyscallAnalyzer) generateSlowSyscall(event *model.KindlingEvent) (*
 
 	latency := dataLatency.GetUintValue()
 
-	latencyTrace := model.NewIntMetric(constnames.PgftMajorMetricName, int64(latency))
+	latencyTrace := model.NewIntMetric(constnames.SlowSyscallTraceName, int64(latency))
 
 	return model.NewDataGroup(constnames.SlowSyscallGroupName, labels, event.Timestamp, latencyTrace), nil
 }
@@ -98,7 +106,6 @@ func getHostNameFromEnv() (string, error) {
 }
 
 func (a *SlowSyscallAnalyzer) getSlowSyscallLabels(event *model.KindlingEvent) (*model.AttributeMap, error) {
-
 	labels := model.NewAttributeMap()
 	ctx := event.GetCtx()
 	if ctx == nil {

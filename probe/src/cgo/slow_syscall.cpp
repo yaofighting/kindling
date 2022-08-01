@@ -1,13 +1,16 @@
 #include "slow_syscall.h"
 
-bool slow_syscall::getTidExist(int tid){
-    return syscall_map.find(tid) != syscall_map.end();
-}
 
-void slow_syscall::erase(int tid){
-    syscall_map.erase(tid);
-}
-
-void slow_syscall::insert(int tid, SyscallElem s){
-    syscall_map[tid] = s;
+void slow_syscall::getSlowSyscallTimeoutEvent(){
+    if(!m_timeout_list.empty()) return;
+    chrono::nanoseconds ns = std::chrono::duration_cast< std::chrono::nanoseconds>(
+		std::chrono::system_clock::now().time_since_epoch()
+	);
+    int64_t cur = ns.count();
+    for(auto &e: syscall_map){
+        if((cur - e.second.timestamp) / 1e6 >= m_timeout){
+            m_timeout_list.push_back(e.first);
+            syscall_map.erase(e.first);
+        }
+    }
 }

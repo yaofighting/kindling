@@ -10,6 +10,7 @@ package cgoreceiver
 */
 import "C"
 import (
+	"fmt"
 	"sync"
 	"time"
 	"unsafe"
@@ -27,6 +28,8 @@ const (
 )
 
 type CKindlingEventForGo C.struct_kindling_event_t_for_go
+
+type CEventParamsForSubscribe C.struct_event_params_for_subscribe
 
 type CgoReceiver struct {
 	cfg             *Config
@@ -65,7 +68,40 @@ func (r *CgoReceiver) Start() error {
 	go r.consumeEvents()
 	r.initPageFaultEvent()
 	go r.startGetEvent()
+	r.startGetTimeoutSyscall()
 	return nil
+}
+
+func (r *CgoReceiver) startGetTimeoutSyscall() {
+	var SlowSyscallEnabled bool = false
+	for _, value := range r.cfg.SubscribeInfo {
+		if value.Name == "udf-slow_syscall" {
+			SlowSyscallEnabled = true
+			break
+		}
+	}
+
+	if !SlowSyscallEnabled {
+		return
+	}
+
+	go func() {
+		ticker := time.NewTicker(time.Second * 15)
+		for {
+			<-ticker.C
+			for {
+				var pKindlingEvent unsafe.Pointer
+				res := int(C.getSlowSyscallTimeoutEvent(&pKindlingEvent))
+				if res == -1 {
+					break
+				}
+				event := convertEvent((*CKindlingEventForGo)(pKindlingEvent))
+				r.eventChannel <- event
+				r.stats.add(event.Name, 1)
+			}
+		}
+	}()
+
 }
 
 func (r *CgoReceiver) initPageFaultEvent() {
@@ -81,19 +117,16 @@ func (r *CgoReceiver) initPageFaultEvent() {
 		return
 	}
 
-	pageCnt := 0
 	for {
 		var pKindlingEvent unsafe.Pointer
 		res := int(C.getPageFaultInitEvent(&pKindlingEvent))
 		if res == -1 {
 			break
 		}
-		pageCnt++
 		event := convertEvent((*CKindlingEventForGo)(pKindlingEvent))
 		r.eventChannel <- event
 		r.stats.add(event.Name, 1)
 	}
-	r.telemetry.Logger.Info("pagefault init:", zap.Int("the total number of init pagefault threads", pageCnt))
 
 }
 
@@ -200,13 +233,38 @@ func (r *CgoReceiver) sendToNextConsumer(evt *model.KindlingEvent) error {
 	return nil
 }
 
-func (r *CgoReceiver) subEvent() {
+func (r *CgoReceiver) subEvent() error {
 	if len(r.cfg.SubscribeInfo) == 0 {
 		r.telemetry.Logger.Warn("No events are subscribed by cgoreceiver. Please check your configuration.")
 	} else {
 		r.telemetry.Logger.Sugar().Infof("The subscribed events are: %v", r.cfg.SubscribeInfo)
 	}
+
 	for _, value := range r.cfg.SubscribeInfo {
-		C.subEventForGo(C.CString(value.Name), C.CString(value.Category), value.Params)
+		params := value.Params
+		var paramsList []CEventParamsForSubscribe
+		var ok bool
+		var val uint64
+		if value.Name == "udf-slow_syscall" {
+			var temp CEventParamsForSubscribe
+			val, ok = params["latency"]
+			if !ok {
+				return fmt.Errorf("slow syscall sub error: param latency is empty!")
+			}
+			temp.name = C.CString("latency")
+			temp.value = C.uint64_t(val)
+			paramsList[0] = temp
+
+			val, ok = params["timeout"]
+			if !ok {
+				return fmt.Errorf("slow syscall sub error: param timeout is empty!")
+			}
+			temp.name = C.CString("timeout")
+			temp.value = C.uint64_t(val)
+			paramsList[1] = temp
+
+		}
+		C.subEventForGo(C.CString(value.Name), C.CString(value.Category), (unsafe.Pointer)(&paramsList[0]))
 	}
+	return nil
 }

@@ -9,6 +9,7 @@
 #include <cstdlib>
 #include <chrono>
 #include "slow_syscall.h"
+#include "util.h"
 
 static sinsp *inspector = nullptr;
 sinsp_evt_formatter *formatter = nullptr;
@@ -39,9 +40,14 @@ void init_sub_label()
 }
 
 
-void sub_event(char *eventName, char *category, int params[])
+void sub_event(char *eventName, char *category, event_params_for_subscribe params[])
 {
 	cout << "sub event name: " << eventName << "  &&  category: " << category << endl;
+	if(strcmp(eventName, "udf-slow_syscall") == 0){ //subscribe slow syscall
+		slow.setLatency(params[0].value);
+		slow.setTimeout(params[1].value);
+		cout << "sub slow-syscall with latency=" << params[0].value << ", timeout=" << params[1].value << endl;
+	}
 	auto it_type = m_events.find(eventName);
 	if(it_type != m_events.end())
 	{
@@ -165,6 +171,20 @@ void convertThreadsTable(){
 	cout << "total number of threads initialized is " << threadstable.size() << endl;
 }
 
+void initKindlingEvent(kindling_event_t_for_go *&p_kindling_event){
+	p_kindling_event->name = (char *)malloc(sizeof(char) * 1024);
+	p_kindling_event->context.tinfo.comm = (char *)malloc(sizeof(char) * 256);
+	p_kindling_event->context.tinfo.containerId = (char *)malloc(sizeof(char) * 256);
+	p_kindling_event->context.fdInfo.filename = (char *)malloc(sizeof(char) * 1024);
+	p_kindling_event->context.fdInfo.directory = (char *)malloc(sizeof(char) * 1024);
+
+	for(int i = 0; i < 2; i++)
+	{
+		p_kindling_event->userAttributes[i].key = (char *)malloc(sizeof(char) * 128);
+		p_kindling_event->userAttributes[i].value = (char *)malloc(sizeof(char) * 1024);
+	}
+}
+
 int getPageFaultThreadEvent(void **pp_kindling_event){
 	static unordered_map<int64_t, threadinfo_map_t::ptr_t>::iterator it = threadstable.begin();
 	if(it == threadstable.end()){
@@ -178,11 +198,7 @@ int getPageFaultThreadEvent(void **pp_kindling_event){
 		*pp_kindling_event = (kindling_event_t_for_go *)malloc(sizeof(kindling_event_t_for_go));
 		p_kindling_event = (kindling_event_t_for_go *)*pp_kindling_event;
 
-		p_kindling_event->name = (char *)malloc(sizeof(char) * 1024);
-		p_kindling_event->context.tinfo.comm = (char *)malloc(sizeof(char) * 256);
-		p_kindling_event->context.tinfo.containerId = (char *)malloc(sizeof(char) * 256);
-		p_kindling_event->context.fdInfo.filename = (char *)malloc(sizeof(char) * 1024);
-		p_kindling_event->context.fdInfo.directory = (char *)malloc(sizeof(char) * 1024);
+		initKindlingEvent(p_kindling_event);
 
 		for(int i = 0; i < 2; i++)
 		{
@@ -231,6 +247,48 @@ void initPageFaultOffData(){
         inspector->update_pagefaults_threads_number(tmp->m_tid, tmp->m_pfmajor);
 	}
 	inspector->update_pagefaults_threads_number(-1, threadstable.size());
+}
+
+int getSyscallTimeoutEvent(void **pp_kindling_event){
+	slow.getSlowSyscallTimeoutEvent();
+	if(slow.m_timeout_list.empty()){
+		return -1;
+	} 
+	static vector<int>::iterator it = slow.m_timeout_list.begin();
+	if(it == slow.m_timeout_list.end()){
+		slow.m_timeout_list.clear();
+		return -1;
+	}
+	int tid = *it;
+	it++;
+	SyscallElem elem = slow.getElem(tid);
+	kindling_event_t_for_go *p_kindling_event;
+	if(nullptr == *pp_kindling_event)
+	{
+		*pp_kindling_event = (kindling_event_t_for_go *)malloc(sizeof(kindling_event_t_for_go));
+		p_kindling_event = (kindling_event_t_for_go *)*pp_kindling_event;
+
+		initKindlingEvent(p_kindling_event);
+	}
+	p_kindling_event = (kindling_event_t_for_go *)*pp_kindling_event;
+
+	p_kindling_event->context.tinfo.pid = elem.pid;
+	p_kindling_event->context.tinfo.tid = tid;
+	p_kindling_event->slow_syscall = IS_SYSCALL_TIMEOUT;
+
+	strcpy(p_kindling_event->userAttributes[0].key, "latency");
+	uint64_t zero = 0;
+	memcpy(p_kindling_event->userAttributes[0].value, &zero, 8);
+	p_kindling_event->userAttributes[0].valueType = UINT64;
+	p_kindling_event->userAttributes[0].len = 8;
+
+
+	p_kindling_event->paramsNumber = 1;
+	string name = get_event_type(elem.type);
+	name = "timeout:syscall:" + name;
+	strcpy(p_kindling_event->name, name.c_str());
+
+	return 1;
 }
 int getEvent(void **pp_kindling_event)
 {
@@ -366,21 +424,24 @@ int getEvent(void **pp_kindling_event)
 
 	uint16_t userAttNumber = 0;
 	uint16_t source = get_kindling_source(ev->get_type());
-	p_kindling_event->slow_syscall = false;
+	p_kindling_event->slow_syscall = NOT_SLOW_SYSCALL;
 	if(source == SYSCALL_EXIT) {
 		strcpy(p_kindling_event->userAttributes[userAttNumber].key, "latency");
 		memcpy(p_kindling_event->userAttributes[userAttNumber].value, to_string(threadInfo->m_latency).data(), 8);
 		p_kindling_event->userAttributes[userAttNumber].valueType = UINT64;
 		p_kindling_event->userAttributes[userAttNumber].len = 8;
+		if(threadInfo->m_latency / 1e6 >= slow.getLatency()){
+			p_kindling_event->slow_syscall = IS_SLOW_SYSCALL;
+		}
 		bool exist = slow.getTidExist(threadInfo->m_tid);
 		if(exist){
 			slow.erase(threadInfo->m_tid);
 		}
 	}else if(source == SYSCALL_ENTER){
-		bool exist = slow.getTidExist(threadInfo->m_tid);
 		SyscallElem tmp;
 		tmp.timestamp = ev->get_ts();
 		tmp.type = ev->get_type();
+		tmp.pid = threadInfo->m_pid;
 		slow.insert(threadInfo->m_tid, tmp);
 	}
 	userAttNumber++;

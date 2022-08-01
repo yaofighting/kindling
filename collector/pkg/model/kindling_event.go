@@ -15,6 +15,12 @@ const (
 	Source_URETPROBE      Source = 7
 )
 
+const (
+	NOT_SLOW_SYSCALL   int32 = 0
+	IS_SLOW_SYSCALL    int32 = 1
+	IS_SYSCALL_TIMEOUT int32 = 2
+)
+
 var Source_name = map[int32]string{
 	0: "SOURCE_UNKNOWN",
 	1: "SYSCALL_ENTER",
@@ -252,7 +258,7 @@ type KindlingEvent struct {
 	// Number of UserAttributes
 	ParamsNumber uint16
 	// Slow Syscall flag
-	SlowSyscall bool
+	SlowSyscall int
 	// User-defined Attributions of Kindling Event, now including latency for syscall.
 	UserAttributes [8]KeyValue
 	// Context includes Thread information and Fd information.
