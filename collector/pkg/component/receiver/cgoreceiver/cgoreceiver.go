@@ -264,6 +264,12 @@ func (r *CgoReceiver) subEvent() error {
 			paramsList[1] = temp
 
 		}
+		if len(paramsList) == 0 {
+			var temp CEventParamsForSubscribe
+			temp.name = C.CString("none")
+			temp.value = C.uint64_t(0)
+			paramsList[0] = temp
+		}
 		C.subEventForGo(C.CString(value.Name), C.CString(value.Category), (unsafe.Pointer)(&paramsList[0]))
 	}
 	return nil

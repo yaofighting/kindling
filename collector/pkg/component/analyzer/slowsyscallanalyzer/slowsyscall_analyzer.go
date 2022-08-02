@@ -21,14 +21,21 @@ const (
 )
 
 type SlowSyscallAnalyzer struct {
-	consumers []consumer.Consumer
-	telemetry *component.TelemetryTools
+	consumers     []consumer.Consumer
+	telemetry     *component.TelemetryTools
+	localNodeName string
 }
 
 func NewSlowSyscallAnalyzer(cfg interface{}, telemetry *component.TelemetryTools, nextConsumers []consumer.Consumer) analyzer.Analyzer {
+	var localNodeName string
+	var err error
+	if localNodeName, err = getHostNameFromEnv(); err != nil {
+		telemetry.Logger.Warn("cannot get the local node name: ", zap.Error(err))
+	}
 	retAnalyzer := &SlowSyscallAnalyzer{
-		consumers: nextConsumers,
-		telemetry: telemetry,
+		consumers:     nextConsumers,
+		telemetry:     telemetry,
+		localNodeName: localNodeName,
 	}
 	return retAnalyzer
 }
@@ -49,7 +56,7 @@ func (a *SlowSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	var err error
 	if event.GetSlowSyscallCode() > 0 {
 		dataGroup, err = a.generateSlowSyscall(event)
-		a.telemetry.Logger.Sugar().Info("enter the slow syscall analyzer & SlowSyscall code: %d...", event.GetSlowSyscallCode())
+		a.telemetry.Logger.Sugar().Info("enter the slow syscall analyzer & SlowSyscall code: %d...%s...", event.GetSlowSyscallCode(), event.Name)
 	}
 
 	strArr := strings.Split(event.Name, ":")
@@ -123,13 +130,7 @@ func (a *SlowSyscallAnalyzer) getSlowSyscallLabels(event *model.KindlingEvent) (
 	syscallName := event.GetName()
 	containerId := threadinfo.GetContainerId()
 
-	var localNodeName string
-	var err error
-	if localNodeName, err = getHostNameFromEnv(); err != nil {
-		return labels, fmt.Errorf("localName not found with %s", event.Name)
-	}
-
-	labels.AddStringValue(constlabels.Node, localNodeName)
+	labels.AddStringValue(constlabels.Node, a.localNodeName)
 	labels.AddIntValue(constlabels.Tid, tid)
 	labels.AddIntValue(constlabels.Pid, pid)
 	labels.AddStringValue(constlabels.SyscallName, syscallName)

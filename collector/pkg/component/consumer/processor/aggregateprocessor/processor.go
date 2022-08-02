@@ -134,6 +134,9 @@ func (p *AggregateProcessor) Consume(dataGroup *model.DataGroup) error {
 		//p.nextConsumer.Consume(dataGroup)
 		p.aggregator.Aggregate(dataGroup, p.pgftLabelSelectors)
 		return nil
+	case constnames.SlowSyscallGroupName:
+		p.nextConsumer.Consume(dataGroup)
+		return nil
 	default:
 		p.aggregator.Aggregate(dataGroup, p.netRequestLabelSelectors)
 		return nil

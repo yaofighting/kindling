@@ -27,8 +27,8 @@ receivers:
       - name: tracepoint-page_fault
       - name: udf-slow_syscall
         params: 
-          latency: 50
-          timeout: 10000
+          latency: 1
+          timeout: 1000
 analyzers:
   tcpconnectanalyzer:
     channel_size: 10000
@@ -37,6 +37,7 @@ analyzers:
     need_process_info: false
   tcpmetricanalyzer:
   pgftmetricanalyzer:
+  slowsyscallanalyzer:
   networkanalyzer:
     connect_timeout: 100
     # How many seconds to wait until we consider a request as no response.
