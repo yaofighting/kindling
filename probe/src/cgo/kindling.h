@@ -13,7 +13,7 @@ void convertThreadsTable();
 void initPageFaultOffData();
 int getPageFaultThreadEvent(void **kindlingEvent);
 int getEvent(void **kindlingEvent);
-int getSyscallTimeoutEvent(void **pp_kindling_event);
+int getSyscallTimeoutEvent(void **kindlingEvent);
 uint16_t get_kindling_category(sinsp_evt *sEvt);
 void init_sub_label();
 uint16_t get_protocol(scap_l4_proto proto);
@@ -22,7 +22,7 @@ uint16_t get_kindling_source(uint16_t etype);
 
 struct event_params_for_subscribe {
 	char *name;
-	uint64_t value;
+	char *value;
 };
 struct event {
     string event_name;
@@ -46,6 +46,7 @@ struct kindling_event_t_for_go{
             uint32_t tid;
             uint32_t uid;
             uint32_t gid;
+			uint64_t latency;
             char *comm;
             char *containerId;
         }tinfo;

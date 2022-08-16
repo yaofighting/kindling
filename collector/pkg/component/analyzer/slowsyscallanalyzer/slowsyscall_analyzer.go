@@ -20,6 +20,12 @@ const (
 	SlowSyscallTrace analyzer.Type = "slowsyscallanalyzer"
 )
 
+const (
+	NOT_SLOW_SYSCALL   int = 0
+	IS_SLOW_SYSCALL    int = 1
+	IS_SYSCALL_TIMEOUT int = 2
+)
+
 type SlowSyscallAnalyzer struct {
 	consumers     []consumer.Consumer
 	telemetry     *component.TelemetryTools
@@ -54,15 +60,16 @@ func (a *SlowSyscallAnalyzer) ConsumableEvents() []string {
 func (a *SlowSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	var dataGroup *model.DataGroup
 	var err error
-	if event.GetSlowSyscallCode() > 0 {
-		dataGroup, err = a.generateSlowSyscall(event)
-		a.telemetry.Logger.Sugar().Info("enter the slow syscall analyzer & SlowSyscall code: %d...%s...", event.GetSlowSyscallCode(), event.Name)
+	if event.GetSlowSyscallCode() == NOT_SLOW_SYSCALL {
+		return nil
 	}
 
-	strArr := strings.Split(event.Name, ":")
-	if len(strArr) > 1 && strArr[0] == "timeout" {
-		a.telemetry.Logger.Info("start to analyze the timeout_syscall...")
-		event.Name = strArr[2]
+	dataGroup, err = a.generateSlowSyscall(event)
+	if event.GetSlowSyscallCode() == IS_SYSCALL_TIMEOUT {
+		strArr := strings.Split(event.Name, ":")
+		if len(strArr) > 1 && strArr[0] == "timeout" {
+			event.Name = strArr[2]
+		}
 	}
 
 	if err != nil {
@@ -92,14 +99,14 @@ func (a *SlowSyscallAnalyzer) generateSlowSyscall(event *model.KindlingEvent) (*
 		return nil, err
 	}
 
-	dataLatency := event.GetUserAttribute("latency")
-	if dataLatency == nil {
-		return nil, fmt.Errorf("slow syscall: the latency value is nil %s", event.Name)
+	tinfo := event.GetCtx().GetThreadInfo()
+	if tinfo == nil {
+		return nil, fmt.Errorf("slow syscall: the threadinfo value is nil %s", event.Name)
 	}
 
-	latency := dataLatency.GetUintValue()
+	dataLatency := tinfo.GetLatency()
 
-	latencyTrace := model.NewIntMetric(constnames.SlowSyscallTraceName, int64(latency))
+	latencyTrace := model.NewIntMetric(constnames.SlowSyscallTraceName, int64(dataLatency))
 
 	return model.NewDataGroup(constnames.SlowSyscallGroupName, labels, event.Timestamp, latencyTrace), nil
 }

@@ -43,6 +43,7 @@ struct kindling_event_t_for_go{
             uint32_t tid;
             uint32_t uid;
             uint32_t gid;
+            uint64_t latency;
             char *comm;
             char *containerId;
         }tinfo;
