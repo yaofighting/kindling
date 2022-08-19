@@ -144,3 +144,7 @@ func (a *PgftMetricAnalyzer) Shutdown() error {
 func (a *PgftMetricAnalyzer) Type() analyzer.Type {
 	return PgftMetric
 }
+
+func (a *PgftMetricAnalyzer) SetSubEvents(params map[string]string) {
+
+}

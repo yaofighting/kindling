@@ -243,3 +243,7 @@ func (a *TcpConnectAnalyzer) Shutdown() error {
 func (a *TcpConnectAnalyzer) Type() analyzer.Type {
 	return Type
 }
+
+func (a *TcpConnectAnalyzer) SetSubEvents(params map[string]string) {
+
+}

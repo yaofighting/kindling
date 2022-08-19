@@ -33,5 +33,5 @@ const (
 	NodeMetricGroupName             = "node_metric_metric_group"
 	TcpConnectMetricGroupName       = "tcp_connect_metric_group"
 	PgftMetricGroupName             = "pgft_metric_metric_group"
-	SlowSyscallGroupName            = "slow_syscall_trace_group"
+	ErrorSlowSyscallGroupName       = "error_slow_syscall_trace_group"
 )

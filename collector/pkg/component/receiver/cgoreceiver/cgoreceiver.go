@@ -225,18 +225,27 @@ func (r *CgoReceiver) sendToNextConsumer(evt *model.KindlingEvent) error {
 			zap.String("event", evt.String()),
 		)
 	}
-	analyzers := r.analyzerManager.GetConsumableAnalyzers(evt.Name)
+	var analyzers []analyzerpackage.Analyzer
+	if evt.GetSlowSyscallCode() < 2 {
+		analyzers = r.analyzerManager.GetConsumableAnalyzers(evt.Name)
+	}
+
 	if evt.GetSlowSyscallCode() > 0 {
 		tmp := r.analyzerManager.GetConsumableAnalyzers(constnames.SlowSyscallEvent)
 		for _, analyzer := range tmp {
 			analyzers = append(analyzers, analyzer)
 		}
 	}
+	//r.telemetry.Logger.Sugar().Info("name:", zap.String("name", evt.GetName()))
 	if analyzers == nil || len(analyzers) == 0 {
 		r.telemetry.Logger.Info("analyzer not found for event ", zap.String("eventName", evt.Name))
 		return nil
 	}
+
 	for _, analyzer := range analyzers {
+		// if analyzer.Type().String() == "errorsyscallanalyzer" {
+		// 	r.telemetry.Logger.Sugar().Info("error_name:", zap.String("name", evt.GetName()))
+		// }
 		err := analyzer.ConsumeEvent(evt)
 		if err != nil {
 			r.telemetry.Logger.Warn("Error sending event to next consumer: ", zap.Error(err))
@@ -256,25 +265,17 @@ func (r *CgoReceiver) subEvent() error {
 		params := value.Params
 		var paramsList []CEventParamsForSubscribe
 		var ok bool
-		var val string
 		if value.Name == "udf-slow_syscall" {
-			var temp CEventParamsForSubscribe
-			val, ok = params["latency"]
+			paramsList, ok = MakeParamsListForSlowSyscall(params)
 			if !ok {
-				return fmt.Errorf("slow syscall sub error: param latency is empty!")
+				return fmt.Errorf("slow syscall sub error: params error!")
 			}
-			temp.name = C.CString("latency")
-			temp.value = C.CString(val)
-			paramsList = append(paramsList, temp)
-
-			val, ok = params["timeout"]
-			if !ok {
-				return fmt.Errorf("slow syscall sub error: param timeout is empty!")
-			}
-			temp.name = C.CString("timeout")
-			temp.value = C.CString(val)
-			paramsList = append(paramsList, temp)
-
+		}
+		if value.Name == "udf-error_syscall" {
+			paramsList = MakeParamsListForErrorSyscall(params)
+			errorSyscallAnalyzers := r.analyzerManager.GetConsumableAnalyzers("error-syscall")
+			errorSyscallAnalyzers[0].SetSubEvents(params)
+			r.analyzerManager.UpdateAnalyerMap(errorSyscallAnalyzers[0])
 		}
 		var temp CEventParamsForSubscribe
 		temp.name = C.CString("none")

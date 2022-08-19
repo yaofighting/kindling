@@ -169,3 +169,7 @@ func (a *TcpMetricAnalyzer) Shutdown() error {
 func (a *TcpMetricAnalyzer) Type() analyzer.Type {
 	return TcpMetric
 }
+
+func (a *TcpMetricAnalyzer) SetSubEvents(params map[string]string) {
+
+}

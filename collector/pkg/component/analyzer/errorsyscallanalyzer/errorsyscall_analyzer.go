@@ -1,4 +1,4 @@
-package slowsyscallanalyzer
+package errorsyscallanalyzer
 
 import (
 	"fmt"
@@ -17,28 +17,24 @@ import (
 )
 
 const (
-	SlowSyscallTrace analyzer.Type = "slowsyscallanalyzer"
+	ErrorSyscallTrace analyzer.Type = "errorsyscallanalyzer"
 )
 
-const (
-	NOT_SLOW_SYSCALL   int = 0
-	IS_SLOW_SYSCALL    int = 1
-	IS_SYSCALL_TIMEOUT int = 2
-)
-
-type SlowSyscallAnalyzer struct {
+type ErrorSyscallAnalyzer struct {
 	consumers     []consumer.Consumer
 	telemetry     *component.TelemetryTools
 	localNodeName string
 }
 
-func NewSlowSyscallAnalyzer(cfg interface{}, telemetry *component.TelemetryTools, nextConsumers []consumer.Consumer) analyzer.Analyzer {
+var events []string
+
+func NewErrorSyscallAnalyzer(cfg interface{}, telemetry *component.TelemetryTools, nextConsumers []consumer.Consumer) analyzer.Analyzer {
 	var localNodeName string
 	var err error
 	if localNodeName, err = getHostNameFromEnv(); err != nil {
 		telemetry.Logger.Warn("cannot get the local node name: ", zap.Error(err))
 	}
-	retAnalyzer := &SlowSyscallAnalyzer{
+	retAnalyzer := &ErrorSyscallAnalyzer{
 		consumers:     nextConsumers,
 		telemetry:     telemetry,
 		localNodeName: localNodeName,
@@ -46,31 +42,29 @@ func NewSlowSyscallAnalyzer(cfg interface{}, telemetry *component.TelemetryTools
 	return retAnalyzer
 }
 
-func (a *SlowSyscallAnalyzer) Start() error {
+func (a *ErrorSyscallAnalyzer) Start() error {
 	return nil
 }
-
-func (a *SlowSyscallAnalyzer) ConsumableEvents() []string {
-	return []string{
-		constnames.SlowSyscallEvent,
+func (a *ErrorSyscallAnalyzer) SetSubEvents(params map[string]string) {
+	for _, syscallname := range params {
+		strArr := strings.Split(syscallname, "-")
+		if len(strArr) == 2 {
+			events = append(events, strArr[1])
+		}
 	}
+}
+
+func (a *ErrorSyscallAnalyzer) ConsumableEvents() []string {
+	events = append(events, "error-syscall")
+	return events
 }
 
 // ConsumeEvent gets the event from the previous component
-func (a *SlowSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
+func (a *ErrorSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	var dataGroup *model.DataGroup
 	var err error
-	if event.GetSlowSyscallCode() == NOT_SLOW_SYSCALL {
-		return nil
-	}
-	if event.GetSlowSyscallCode() == IS_SYSCALL_TIMEOUT {
-		strArr := strings.Split(event.Name, ":")
-		if len(strArr) > 1 && strArr[0] == "timeout" {
-			event.Name = strArr[2]
-		}
-	}
-	dataGroup, err = a.generateSlowSyscall(event)
 
+	dataGroup, err = a.generateErrorSyscall(event)
 	if err != nil {
 		if ce := a.telemetry.Logger.Check(zapcore.DebugLevel, "Event Skip, "); ce != nil {
 			ce.Write(
@@ -79,9 +73,11 @@ func (a *SlowSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 		}
 		return nil
 	}
+
 	if dataGroup == nil {
 		return nil
 	}
+
 	var retError error
 	for _, nextConsumer := range a.consumers {
 		err := nextConsumer.Consume(dataGroup)
@@ -92,29 +88,24 @@ func (a *SlowSyscallAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	return retError
 }
 
-func (a *SlowSyscallAnalyzer) generateSlowSyscall(event *model.KindlingEvent) (*model.DataGroup, error) {
-	labels, err := a.getSlowSyscallLabels(event)
+func (a *ErrorSyscallAnalyzer) generateErrorSyscall(event *model.KindlingEvent) (*model.DataGroup, error) {
+	labels, err := a.getErrorSyscallLabels(event)
 	if err != nil {
 		return nil, err
 	}
 
-	var latencyTrace *model.Metric
-	if event.GetSlowSyscallCode() == IS_SYSCALL_TIMEOUT {
-		latencyTrace = model.NewIntMetric(constnames.ErrorSlowSyscallTraceName, int64(-200))
-	} else {
-		tinfo := event.GetCtx().GetThreadInfo()
-		if tinfo == nil {
-			return nil, fmt.Errorf("slow syscall: the threadinfo value is nil %s", event.Name)
-		}
-		dataLatency := tinfo.GetLatency()
-		if int64(dataLatency) < 0 {
-			a.telemetry.Logger.Sugar().Info("dataLatency error:", zap.Uint64("unsigned_num", dataLatency), zap.Int64("num", int64(dataLatency)), zap.String("evt", event.GetName()), zap.Int("syscallcode", event.GetSlowSyscallCode()))
-			return nil, nil
-		}
-		latencyTrace = model.NewIntMetric(constnames.ErrorSlowSyscallTraceName, int64(dataLatency))
+	res := event.GetUserAttribute("res")
+	if res == nil {
+		return nil, fmt.Errorf("the syscall return value is null, wo don't get return value for %s", event.Name)
+	}
+	retval := res.GetIntValue()
+	if retval >= 0 {
+		return nil, nil
 	}
 
-	return model.NewDataGroup(constnames.ErrorSlowSyscallGroupName, labels, event.Timestamp, latencyTrace), nil
+	errorSyscallTrace := model.NewIntMetric(constnames.ErrorSlowSyscallTraceName, int64(retval))
+
+	return model.NewDataGroup(constnames.ErrorSlowSyscallGroupName, labels, event.Timestamp, errorSyscallTrace), nil
 }
 
 func getHostNameFromEnv() (string, error) {
@@ -125,7 +116,7 @@ func getHostNameFromEnv() (string, error) {
 	return value, nil
 }
 
-func (a *SlowSyscallAnalyzer) getSlowSyscallLabels(event *model.KindlingEvent) (*model.AttributeMap, error) {
+func (a *ErrorSyscallAnalyzer) getErrorSyscallLabels(event *model.KindlingEvent) (*model.AttributeMap, error) {
 	labels := model.NewAttributeMap()
 	ctx := event.GetCtx()
 	if ctx == nil {
@@ -153,15 +144,11 @@ func (a *SlowSyscallAnalyzer) getSlowSyscallLabels(event *model.KindlingEvent) (
 }
 
 // Shutdown cleans all the resources used by the analyzer
-func (a *SlowSyscallAnalyzer) Shutdown() error {
+func (a *ErrorSyscallAnalyzer) Shutdown() error {
 	return nil
 }
 
 // Type returns the type of the analyzer
-func (a *SlowSyscallAnalyzer) Type() analyzer.Type {
-	return SlowSyscallTrace
-}
-
-func (a *SlowSyscallAnalyzer) SetSubEvents(params map[string]string) {
-
+func (a *ErrorSyscallAnalyzer) Type() analyzer.Type {
+	return ErrorSyscallTrace
 }

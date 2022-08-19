@@ -22,7 +22,7 @@ void subEventForGo(char* eventName, char* category, void *params);
 
 struct event_params_for_subscribe {
 	char *name;
-	uint64_t value;
+	char *value;
 };
 
 struct kindling_event_t_for_go{

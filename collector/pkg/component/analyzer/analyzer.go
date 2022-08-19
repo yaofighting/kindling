@@ -19,4 +19,6 @@ type Analyzer interface {
 	Type() Type
 	// ConsumableEvents returns the events' name that this analyzer can consume
 	ConsumableEvents() []string
+	// Set the subscribeInfo to the analyzer
+	SetSubEvents(params map[string]string)
 }

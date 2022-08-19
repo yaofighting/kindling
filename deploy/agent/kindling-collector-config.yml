@@ -29,6 +29,10 @@ receivers:
         params: 
           latency: 1
           timeout: 1000
+      - name: udf-error_syscall
+        params:
+          syscall-1: syscall_exit-futex
+          syscall-2: syscall_exit-epoll
 analyzers:
   tcpconnectanalyzer:
     channel_size: 10000

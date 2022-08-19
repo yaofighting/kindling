@@ -54,6 +54,22 @@ func NewManager(analyzers ...Analyzer) (*Manager, error) {
 	}, nil
 }
 
+func (m *Manager) UpdateAnalyerMap(analyzers ...Analyzer) {
+	for _, analyzer := range analyzers {
+		consumableEvents := analyzer.ConsumableEvents()
+		for _, event := range consumableEvents {
+			if event != ConsumeAllEvents {
+				analyzerSlice, ok := m.eventAnalyzersMap[event]
+				if !ok {
+					analyzerSlice = make([]Analyzer, 0)
+				}
+				analyzerSlice = append(analyzerSlice, analyzer)
+				m.eventAnalyzersMap[event] = analyzerSlice
+			}
+		}
+	}
+}
+
 func (m *Manager) StartAll(logger *zap.Logger) error {
 	for _, analyzer := range m.allAnalyzers {
 		logger.Sugar().Infof("Starting analyzer [%s]", analyzer.Type())

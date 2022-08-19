@@ -131,10 +131,9 @@ func (p *AggregateProcessor) Consume(dataGroup *model.DataGroup) error {
 		p.aggregator.Aggregate(dataGroup, tcpConnectLabelSelectors)
 		return nil
 	case constnames.PgftMetricGroupName:
-		//p.nextConsumer.Consume(dataGroup)
 		p.aggregator.Aggregate(dataGroup, p.pgftLabelSelectors)
 		return nil
-	case constnames.SlowSyscallGroupName:
+	case constnames.ErrorSlowSyscallGroupName:
 		p.nextConsumer.Consume(dataGroup)
 		return nil
 	default:
