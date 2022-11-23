@@ -13,13 +13,17 @@ void convertThreadsTable();
 void initPageFaultOffData();
 int getPageFaultThreadEvent(void **kindlingEvent);
 int getEvent(void **kindlingEvent);
+int getSyscallTimeoutEvent(void **kindlingEvent);
 uint16_t get_kindling_category(sinsp_evt *sEvt);
 void init_sub_label();
-void sub_event(char* eventName, char* category);
 uint16_t get_protocol(scap_l4_proto proto);
 uint16_t get_type(ppm_param_type type);
 uint16_t get_kindling_source(uint16_t etype);
 
+struct event_params_for_subscribe {
+	char *name;
+	char *value;
+};
 struct event {
     string event_name;
     ppm_event_type event_type;
@@ -29,6 +33,7 @@ struct kindling_event_t_for_go{
 	char *name;
 	uint32_t category;
 	uint16_t paramsNumber;
+	int slow_syscall;
     struct KeyValue {
 	char *key;
 	char* value;
@@ -41,6 +46,7 @@ struct kindling_event_t_for_go{
             uint32_t tid;
             uint32_t uid;
             uint32_t gid;
+			uint64_t latency;
             char *comm;
             char *containerId;
         }tinfo;
@@ -61,6 +67,8 @@ struct kindling_event_t_for_go{
     }context;
 };
 
+void initKindlingEvent(kindling_event_t_for_go *&p_kindling_event);
+void sub_event(char* eventName, char* category, event_params_for_subscribe params[]);
 int setTuple(kindling_event_t_for_go* kevt, const sinsp_evt_param *pTuple, int userAttNumber);
 
 enum Category {

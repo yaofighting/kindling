@@ -35,10 +35,11 @@ const (
 	TcpRetransmitMetricName = "kindling_tcp_retransmit_total"
 	TcpDropMetricName       = "kindling_tcp_packet_loss_total"
 
-	PgftMajorMetricName = "kindling_pagefault_major_total"
-	PgftMinorMetricName = "kindling_pagefault_minor_total"
+	PgftMajorMetricName      = "kindling_pagefault_major_total"
+	PgftMinorMetricName      = "kindling_pagefault_minor_total"
 	TcpConnectTotalMetric    = "kindling_tcp_connect_total"
 	TcpConnectDurationMetric = "kindling_tcp_connect_duration_nanoseconds_total"
+	SlowSyscallTraceName     = "kindling_slow_syscall_latency"
 )
 
 const (

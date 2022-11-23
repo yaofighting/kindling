@@ -2,6 +2,7 @@
 // Created by jundi zhou on 2022/6/1.
 //
 
+
 #ifndef SYSDIG_CGO_FUNC_H
 #define SYSDIG_CGO_FUNC_H
 
@@ -11,19 +12,25 @@ extern "C" {
 void runForGo();
 int getKindlingEvent(void **kindlingEvent);
 int getPageFaultInitEvent(void **kindlingEvent);
-int subEventForGo(char* eventName, char* category);
+int getSlowSyscallTimeoutEvent(void **kindlingEvent);
+void subEventForGo(char* eventName, char* category, void *params);
 #ifdef __cplusplus
 }
-
 #endif
 
 #endif //SYSDIG_CGO_FUNC_H
+
+struct event_params_for_subscribe {
+	char *name;
+	uint64_t value;
+};
 
 struct kindling_event_t_for_go{
 	uint64_t timestamp;
 	char *name;
 	uint32_t category;
 	uint16_t paramsNumber;
+    int slow_syscall;
     struct KeyValue {
 	char *key;
 	char* value;
@@ -36,6 +43,7 @@ struct kindling_event_t_for_go{
             uint32_t tid;
             uint32_t uid;
             uint32_t gid;
+            uint64_t latency;
             char *comm;
             char *containerId;
         }tinfo;

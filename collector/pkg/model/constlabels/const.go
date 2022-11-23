@@ -100,11 +100,13 @@ const (
 	SpanMysqlErrorCode = "mysql.error_code"
 	SpanMysqlErrorMsg  = "mysql.error_msg"
 
-	PgftMaj = "pgft_maj"
-	PgftMin = "pgft_min"
-	VmSize  = "vm_size"
-	VmRss   = "vm_rss"
-	VmSwap  = "vm_swap"
+	SyscallName = "syscall_name"
+
+	PgftMaj               = "pgft_maj"
+	PgftMin               = "pgft_min"
+	VmSize                = "vm_size"
+	VmRss                 = "vm_rss"
+	VmSwap                = "vm_swap"
 	SpanDubboErrorCode    = "dubbo.error_code"
 	SpanDubboRequestBody  = "dubbo.request_body"
 	SpanDubboResponseBody = "dubbo.response_body"

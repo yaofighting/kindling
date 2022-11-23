@@ -251,6 +251,8 @@ type KindlingEvent struct {
 	Category Category
 	// Number of UserAttributes
 	ParamsNumber uint16
+	// Slow Syscall flag
+	SlowSyscall int
 	// User-defined Attributions of Kindling Event, now including latency for syscall.
 	UserAttributes [8]KeyValue
 	// Context includes Thread information and Fd information.
@@ -288,6 +290,13 @@ func (m *KindlingEvent) GetCategory() Category {
 		return m.Category
 	}
 	return Category_CAT_NONE
+}
+
+func (m *KindlingEvent) GetSlowSyscallCode() int {
+	if m != nil {
+		return m.SlowSyscall
+	}
+	return 0
 }
 
 func (m *KindlingEvent) GetUserAttributes() *[8]KeyValue {
@@ -358,6 +367,8 @@ type Thread struct {
 	ContainerId string
 	// ContainerName of thread
 	ContainerName string
+	//Syscall latency
+	Latency uint64
 }
 
 func (m *Thread) GetPid() uint32 {
@@ -370,6 +381,13 @@ func (m *Thread) GetPid() uint32 {
 func (m *Thread) GetTid() uint32 {
 	if m != nil {
 		return m.Tid
+	}
+	return 0
+}
+
+func (m *Thread) GetLatency() uint64 {
+	if m != nil {
+		return m.Latency
 	}
 	return 0
 }

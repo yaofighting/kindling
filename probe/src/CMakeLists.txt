@@ -8,7 +8,9 @@ include_directories("../cgo")
 
 set(SOURCE_FILES
 		cgo/cgo_func.cpp
-		cgo/kindling.cpp)
+		cgo/kindling.cpp
+		cgo/slow_syscall.cpp
+		cgo/util.cpp)
 
 add_library(kindling SHARED ${SOURCE_FILES})
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)
