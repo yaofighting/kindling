@@ -1,6 +1,12 @@
 package model
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"fmt"
+	"math"
+	"regexp"
+	"strings"
+)
 
 type Source int32
 
@@ -515,4 +521,79 @@ func (m *Fd) GetDestination() uint64 {
 		return m.Destination
 	}
 	return 0
+}
+
+func TextKindlingEvent(m *KindlingEvent) string {
+	var text strings.Builder
+	text.WriteString("{")
+	// Since Source is always SOURCE_UNKNOW now, just ignore
+	// text.WriteString(fmt.Sprintf("Source: %s,", Source_name[int32(m.Source)]))
+	text.WriteString(fmt.Sprintf("Name:%s ", m.Name))
+	text.WriteString(fmt.Sprintf("Category:%d ", m.Category))
+	text.WriteString(fmt.Sprintf("ParamsNumber:%d ", m.ParamsNumber))
+	text.WriteString(fmt.Sprintf("UserAttributes:%s ", textUserAttributes(m.UserAttributes)))
+	text.WriteString(fmt.Sprintf("Ctx:%+v ", m.Ctx))
+	text.WriteString(fmt.Sprintf("Latency:%d ", m.Latency))
+	text.WriteString(fmt.Sprintf("Timestamp:%d", m.Timestamp))
+	text.WriteString("}")
+	return text.String()
+}
+
+func textUserAttributes(attrs [16]KeyValue) string {
+	var attrsStr strings.Builder
+	var block = false
+	attrsStr.WriteByte('[')
+	for _, attr := range attrs {
+		if attr.ValueType != ValueType_NONE {
+			if block {
+				attrsStr.WriteByte(' ')
+			} else {
+				block = true
+			}
+			attrsStr.WriteString(textUserAttribute(attr))
+		}
+	}
+	attrsStr.WriteByte(']')
+	return attrsStr.String()
+}
+
+func textUserAttribute(attr KeyValue) string {
+	switch attr.ValueType {
+	case ValueType_CHARBUF:
+		return fmt.Sprintf("%s:CHARBUF(%.80s)", attr.Key, bytesReader(attr.Value, 80))
+	case ValueType_BYTEBUF:
+		return fmt.Sprintf("%s:BYTEBUF(%.80s)", attr.Key, bytesReader(attr.Value, 80))
+	case ValueType_INT64:
+		fallthrough
+	case ValueType_INT32:
+		fallthrough
+	case ValueType_INT16:
+		fallthrough
+	case ValueType_INT8:
+		return fmt.Sprintf("%s:INT(%d)", attr.Key, attr.GetIntValue())
+	case ValueType_UINT64:
+		fallthrough
+	case ValueType_UINT32:
+		fallthrough
+	case ValueType_UINT16:
+		fallthrough
+	case ValueType_UINT8:
+		return fmt.Sprintf("%s:UINT(%d)", attr.Key, attr.GetUintValue())
+	case ValueType_FLOAT:
+		return fmt.Sprintf("%s:FLOAT(%f)", attr.Key, math.Float32frombits(byteOrder.Uint32(attr.Value)))
+	case ValueType_NONE:
+		return "none"
+	default:
+		return fmt.Sprintf("%s:UNKNOW(%s)", attr.Key, string(attr.Value))
+	}
+}
+
+var nonAlphanumericRegex = regexp.MustCompile(`[^a-zA-Z0-9\.\\\/:@\-\=?]+`)
+
+func bytesReader(data []byte, maxLength int) string {
+	if len(data) > maxLength {
+		return nonAlphanumericRegex.ReplaceAllString(string(data[:maxLength]), " ")
+	} else {
+		return nonAlphanumericRegex.ReplaceAllString(string(data), " ")
+	}
 }

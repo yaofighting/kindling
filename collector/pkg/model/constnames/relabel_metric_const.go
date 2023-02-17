@@ -35,6 +35,12 @@ const (
 	TcpRetransmitMetricName = "kindling_tcp_retransmit_total"
 	TcpDropMetricName       = "kindling_tcp_packet_loss_total"
 
+	TcpHandshakeSynRttMetricName     = "kindling_tcp_synrtt_delta"
+	TcpHandshakeAckRttMetricName     = "kindling_tcp_ackrtt_delta"
+	TcpHandshakeDatacountsMetricName = "kinling_tcp_handshake_delta"
+	TcpHandshakeStarttimeMetricName  = "kindling_tcp_handshake_starttime_delta"
+	TcpHandshakeEndtimeMetricName    = "kindling_tcp_handshake_endtime_delta"
+
 	TcpConnectTotalMetric    = "kindling_tcp_connect_total"
 	TcpConnectDurationMetric = "kindling_tcp_connect_duration_nanoseconds_total"
 )

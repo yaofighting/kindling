@@ -31,6 +31,7 @@ receivers:
       - name: kretprobe-tcp_connect
       - name: kprobe-tcp_set_state
       - name: tracepoint-procexit
+      - name: socket_filter
 analyzers:
   cpuanalyzer:
     # segment_size defines how many segments(seconds) can be cached to wait for sending.
@@ -45,6 +46,7 @@ analyzers:
     # Whether add pid and command info in tcp-connect-metrics's labels
     need_process_info: false
   tcpmetricanalyzer:
+  tcppacketsanalyzer:
   networkanalyzer:
     connect_timeout: 100
     # How many seconds to wait until we consider a request as complete.

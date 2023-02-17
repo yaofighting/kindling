@@ -9,6 +9,7 @@ include_directories("../converter")
 set(SOURCE_FILES
 		cgo/cgo_func.cpp
 		cgo/kindling.cpp
+		cgo/socket_utils.cpp
 		converter/cpu_converter.cpp
         cgo/catch_sig.cpp cgo/catch_sig.h)
 

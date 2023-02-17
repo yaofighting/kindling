@@ -10,6 +10,7 @@ extern "C" {
 #endif
 int runForGo();
 int getKindlingEvent(void** kindlingEvent);
+int getTcpPacketsEvent(void *tcpKindlingEvent, void *count);
 void subEventForGo(char* eventName, char* category, void* params);
 int startProfile();
 int stopProfile();

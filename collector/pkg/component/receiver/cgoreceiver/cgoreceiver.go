@@ -72,8 +72,45 @@ func (r *CgoReceiver) Start() error {
 	// Wait for the C routine running
 	time.Sleep(2 * time.Second)
 	go r.consumeEvents()
+	go r.startGetTcpPacketsEvent(30 * time.Second)
 	go r.startGetEvent()
 	return nil
+}
+
+func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
+	var socketFilterEnabled bool = false
+	for _, value := range r.cfg.SubscribeInfo {
+		if value.Name == "socket_filter" {
+			socketFilterEnabled = true
+			break
+		}
+	}
+
+	if !socketFilterEnabled {
+		return
+	}
+
+	tcpKindlingEvent := make([]CKindlingEventForGo, 65535)
+	var count int = 0
+	// var pKindlingEvent unsafe.Pointer
+	r.shutdownWG.Add(1)
+	for {
+		select {
+		case <-r.stopCh:
+			r.shutdownWG.Done()
+			return
+		case <-time.After(interval):
+			res := int(C.getTcpPacketsEvent((unsafe.Pointer)(&tcpKindlingEvent[0]), (unsafe.Pointer)(&count)))
+			if res == 0 {
+				for i := 0; i < count; i++ {
+					event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent[i]))
+					//r.telemetry.Logger.Infof("get tcp_packets_event...")
+					r.eventChannel <- event
+					r.stats.add(event.Name, 1)
+				}
+			}
+		}
+	}
 }
 
 func (r *CgoReceiver) startGetEvent() {

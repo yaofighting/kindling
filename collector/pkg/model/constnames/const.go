@@ -11,6 +11,8 @@ const (
 	RecvMsgEvent  = "recvmsg"
 	ConnectEvent  = "connect"
 
+	TcpHandshakeEvent = "tcp_handshake_rtt"
+
 	TcpCloseEvent          = "tcp_close"
 	TcpRcvEstablishedEvent = "tcp_rcv_established"
 	TcpDropEvent           = "tcp_drop"
@@ -40,4 +42,5 @@ const (
 	TcpDropMetricGroupName       = "tcp_drop_metric_group"
 	NodeMetricGroupName          = "node_metric_metric_group"
 	TcpConnectMetricGroupName    = "tcp_connect_metric_group"
+	TcpHandshakeRttGroupName     = "tcp_handshake_rtt_metric_group"
 )

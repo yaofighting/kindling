@@ -11,6 +11,7 @@
 #include "sinsp_capture_interrupt_exception.h"
 
 #include "converter/cpu_converter.h"
+#include "socket_utils.h"
 
 cpu_converter* cpuConverter;
 fstream debug_file_log;
@@ -162,6 +163,17 @@ int init_probe() {
     return 1;
   }
   return 0;
+}
+
+int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
+  tcp_handshake_buffer_elem *elem = new tcp_handshake_buffer_elem[500000];
+  int raw_data_len;
+  int32_t ret = inspector->get_tcp_handshake_rtt(elem, &raw_data_len);
+  if(ret == 0){
+    ret = aggregate_tcp_handshake_rtt(elem, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+  }
+  delete []elem;
+  return ret;
 }
 
 int getEvent(void** pp_kindling_event) {

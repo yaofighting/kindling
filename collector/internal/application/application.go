@@ -14,6 +14,7 @@ import (
 	"github.com/Kindling-project/kindling/collector/pkg/component/analyzer/network"
 	"github.com/Kindling-project/kindling/collector/pkg/component/analyzer/tcpconnectanalyzer"
 	"github.com/Kindling-project/kindling/collector/pkg/component/analyzer/tcpmetricanalyzer"
+	"github.com/Kindling-project/kindling/collector/pkg/component/analyzer/tcppacketsanalyzer"
 	"github.com/Kindling-project/kindling/collector/pkg/component/consumer"
 	"github.com/Kindling-project/kindling/collector/pkg/component/consumer/exporter/cameraexporter"
 	"github.com/Kindling-project/kindling/collector/pkg/component/consumer/exporter/logexporter"
@@ -85,6 +86,7 @@ func (a *Application) registerFactory() {
 	a.componentsFactory.RegisterAnalyzer(loganalyzer.Type.String(), loganalyzer.New, &loganalyzer.Config{})
 	a.componentsFactory.RegisterProcessor(aggregateprocessor.Type, aggregateprocessor.New, aggregateprocessor.NewDefaultConfig())
 	a.componentsFactory.RegisterAnalyzer(tcpconnectanalyzer.Type.String(), tcpconnectanalyzer.New, tcpconnectanalyzer.NewDefaultConfig())
+	a.componentsFactory.RegisterAnalyzer(tcppacketsanalyzer.Type.String(), tcppacketsanalyzer.New, &tcppacketsanalyzer.Config{})
 	a.componentsFactory.RegisterExporter(cameraexporter.Type, cameraexporter.New, cameraexporter.NewDefaultConfig())
 }
 
@@ -131,12 +133,13 @@ func (a *Application) buildPipeline() error {
 	tcpAnalyzer := tcpAnalyzerFactory.NewFunc(tcpAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(tcpconnectanalyzer.Type.String()), []consumer.Consumer{k8sMetadataProcessor2})
 	tcpConnectAnalyzerFactory := a.componentsFactory.Analyzers[tcpconnectanalyzer.Type.String()]
 	tcpConnectAnalyzer := tcpConnectAnalyzerFactory.NewFunc(tcpConnectAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(tcpconnectanalyzer.Type.String()), []consumer.Consumer{k8sMetadataProcessor})
-
+	tcpPacketsAnalyzerFactory := a.componentsFactory.Analyzers[tcppacketsanalyzer.Type.String()]
+	tcpPacketsAnalyzer := tcpPacketsAnalyzerFactory.NewFunc(tcpPacketsAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(tcppacketsanalyzer.Type.String()), []consumer.Consumer{k8sMetadataProcessor})
 	cpuAnalyzerFactory := a.componentsFactory.Analyzers[cpuanalyzer.CpuProfile.String()]
 	cpuAnalyzer := cpuAnalyzerFactory.NewFunc(cpuAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(cpuanalyzer.CpuProfile.String()), []consumer.Consumer{cameraExporter})
 
 	// Initialize receiver packaged with multiple analyzers
-	analyzerManager, err := analyzer.NewManager(networkAnalyzer, tcpAnalyzer, tcpConnectAnalyzer, cpuAnalyzer)
+	analyzerManager, err := analyzer.NewManager(networkAnalyzer, tcpAnalyzer, tcpConnectAnalyzer, cpuAnalyzer, tcpPacketsAnalyzer)
 	if err != nil {
 		return fmt.Errorf("error happened while creating analyzer manager: %w", err)
 	}
