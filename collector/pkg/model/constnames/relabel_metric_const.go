@@ -41,6 +41,13 @@ const (
 	TcpHandshakeStarttimeMetricName  = "kindling_tcp_handshake_starttime_delta"
 	TcpHandshakeEndtimeMetricName    = "kindling_tcp_handshake_endtime_delta"
 
+	TcpPacketCountsMetricName = "kindling_tcp_packets_total"
+
+	TcpPacketAcktimeMetricName    = "kindling_tcp_packet_acktime_delta"
+	TcpPacketDatacountsMetricName = "kinling_tcp_packets_delta"
+	TcpPacketStarttimeMetricName  = "kindling_tcp_packet_starttime_delta"
+	TcpPacketEndtimeMetricName    = "kindling_tcp_packet_endtime_delta"
+
 	TcpConnectTotalMetric    = "kindling_tcp_connect_total"
 	TcpConnectDurationMetric = "kindling_tcp_connect_duration_nanoseconds_total"
 )

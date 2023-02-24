@@ -11,7 +11,9 @@ const (
 	RecvMsgEvent  = "recvmsg"
 	ConnectEvent  = "connect"
 
-	TcpHandshakeEvent = "tcp_handshake_rtt"
+	TcpHandshakeEvent    = "tcp_handshake_rtt"
+	TcpPacketCountsEvent = "tcp_packet_counts"
+	TcpAckDelayEvent     = "tcp_average_ack_delay"
 
 	TcpCloseEvent          = "tcp_close"
 	TcpRcvEstablishedEvent = "tcp_rcv_established"
@@ -43,4 +45,6 @@ const (
 	NodeMetricGroupName          = "node_metric_metric_group"
 	TcpConnectMetricGroupName    = "tcp_connect_metric_group"
 	TcpHandshakeRttGroupName     = "tcp_handshake_rtt_metric_group"
+	TcpPacketCountsGroupName     = "tcp_packet_counts_metric_group"
+	TcpAckDelayGroupName         = "tcp_average_ack_delay_metric_group"
 )

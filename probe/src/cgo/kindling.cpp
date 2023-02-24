@@ -167,12 +167,27 @@ int init_probe() {
 
 int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
   tcp_handshake_buffer_elem *elem = new tcp_handshake_buffer_elem[500000];
+  tcp_datainfo *data = new tcp_datainfo[800000];
   int raw_data_len;
+  *(int *)count = 0;
+
+  //get tcp handshake rtt data
   int32_t ret = inspector->get_tcp_handshake_rtt(elem, &raw_data_len);
   if(ret == 0){
     ret = aggregate_tcp_handshake_rtt(elem, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
   }
   delete []elem;
+
+  //get tcp packet counts
+  ret = inspector->get_tcp_datainfo(data, &raw_data_len);
+  if(ret == 0){
+    ret = get_total_tcp_packets(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+    if(ret == 0){
+      ret = get_tcp_ack_delay(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+    }
+  }
+
+  delete []data;
   return ret;
 }
 

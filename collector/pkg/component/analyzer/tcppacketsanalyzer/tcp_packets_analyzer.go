@@ -2,6 +2,7 @@ package tcppacketsanalyzer
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/hashicorp/go-multierror"
 	"go.uber.org/zap"
@@ -18,6 +19,14 @@ import (
 
 const (
 	Type analyzer.Type = "tcppacketsanalyzer"
+)
+
+type tupleType int
+
+const (
+	Pair tupleType = iota
+	Triple
+	Quadruples
 )
 
 type TcpPacketsAnalyzer struct {
@@ -46,6 +55,8 @@ func (t *TcpPacketsAnalyzer) Start() error {
 func (t *TcpPacketsAnalyzer) ConsumableEvents() []string {
 	return []string{
 		constnames.TcpHandshakeEvent,
+		constnames.TcpPacketCountsEvent,
+		constnames.TcpAckDelayEvent,
 	}
 }
 
@@ -55,6 +66,10 @@ func (t *TcpPacketsAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 	switch event.Name {
 	case constnames.TcpHandshakeEvent:
 		dataGroup, err = t.generateHandshakeRtt(event)
+	case constnames.TcpPacketCountsEvent:
+		dataGroup, err = t.generateTcpPacketCount(event)
+	case constnames.TcpAckDelayEvent:
+		dataGroup, err = t.generateTcpAckDelay(event)
 	default:
 		return nil
 	}
@@ -81,7 +96,7 @@ func (t *TcpPacketsAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 
 func (t *TcpPacketsAnalyzer) generateHandshakeRtt(event *model.KindlingEvent) (*model.DataGroup, error) {
 	//get tuple label:  (sip,dip,dport)
-	labels, err := t.getTupleLabels(event)
+	labels, err := t.getTupleLabels(event, Triple)
 	if err != nil {
 		return nil, err
 	}
@@ -102,27 +117,70 @@ func (t *TcpPacketsAnalyzer) generateHandshakeRtt(event *model.KindlingEvent) (*
 		metrics = append(metrics, model.NewIntMetric(constnames.TcpHandshakeAckRttMetricName, int64(ackrttDelta)))
 	}
 
-	//t.telemetry.Logger.Info(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
+	t.telemetry.Logger.Debug(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
 	return model.NewDataGroup(constnames.TcpHandshakeRttGroupName, labels, uint64(startTime), metrics...), nil
 }
 
-func (t *TcpPacketsAnalyzer) getTupleLabels(event *model.KindlingEvent) (*model.AttributeMap, error) {
-	//sIp is the client-IP that initiates the first handshake
+func (t *TcpPacketsAnalyzer) generateTcpPacketCount(event *model.KindlingEvent) (*model.DataGroup, error) {
+	//get tuple label:  (sip,dip)
+	labels, err := t.getTupleLabels(event, Pair)
+	if err != nil {
+		return nil, err
+	}
+	// get delta info
+	packetCounts := event.GetUintUserAttribute("packet_counts")
+
+	metric := model.NewIntMetric(constnames.TcpPacketCountsMetricName, int64(packetCounts))
+	t.telemetry.Logger.Debug(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
+	return model.NewDataGroup(constnames.TcpPacketCountsGroupName, labels, uint64(time.Now().Unix()), metric), nil
+}
+
+func (t *TcpPacketsAnalyzer) generateTcpAckDelay(event *model.KindlingEvent) (*model.DataGroup, error) {
+	//get tuple label:  (sip,dip)
+	labels, err := t.getTupleLabels(event, Pair)
+	if err != nil {
+		return nil, err
+	}
+	// get delta info
+	dataCounts := event.GetUintUserAttribute("data_counts")
+	acktimeDelta := event.GetIntUserAttribute("acktime_delta")
+	startTime := event.GetUintUserAttribute("start_time")
+	endTime := event.GetUintUserAttribute("end_time")
+
+	metrics := make([]*model.Metric, 0, 4)
+	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketDatacountsMetricName, int64(dataCounts)))
+	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketStarttimeMetricName, int64(startTime)))
+	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketEndtimeMetricName, int64(endTime)))
+	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketAcktimeMetricName, int64(acktimeDelta)))
+
+	t.telemetry.Logger.Debug(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
+	return model.NewDataGroup(constnames.TcpAckDelayGroupName, labels, uint64(startTime), metrics...), nil
+}
+
+func (t *TcpPacketsAnalyzer) getTupleLabels(event *model.KindlingEvent, tpType tupleType) (*model.AttributeMap, error) {
 	sIp := event.GetUserAttribute("sip")
 	dIp := event.GetUserAttribute("dip")
-	dPort := event.GetUserAttribute("dport")
-
-	if sIp == nil || dIp == nil || dPort == nil {
-		return nil, fmt.Errorf("one of sip or dip or dport is nil for event %s", event.Name)
+	labels := model.NewAttributeMap()
+	if sIp == nil || dIp == nil {
+		return nil, fmt.Errorf("one of sip or dip is nil for event %s", event.Name)
 	}
+	switch tpType {
+	case Pair:
+		break
+	case Triple:
+		dPort := event.GetUserAttribute("dport")
+		if dPort == nil {
+			return nil, fmt.Errorf("dport is nil for event %s", event.Name)
+		}
+		dPortUint := dPort.GetUintValue()
+		labels.AddIntValue(constlabels.DstPort, int64(dPortUint))
+	}
+
 	sIpString := model.IPLong2String(uint32(sIp.GetUintValue()))
 	dIpString := model.IPLong2String(uint32(dIp.GetUintValue()))
-	dPortUint := dPort.GetUintValue()
 
-	labels := model.NewAttributeMap()
 	labels.AddStringValue(constlabels.SrcIp, sIpString)
 	labels.AddStringValue(constlabels.DstIp, dIpString)
-	labels.AddIntValue(constlabels.DstPort, int64(dPortUint))
 
 	return labels, nil
 }
