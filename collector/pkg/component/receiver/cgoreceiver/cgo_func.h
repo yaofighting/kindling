@@ -32,18 +32,20 @@ struct event_params_for_subscribe {
 	char *value;
 };
 
+typedef struct KindlingKeyValue {
+    char* key;
+    char* value;
+    uint32_t len;
+    uint32_t valueType;
+} KeyValue;
+
 struct kindling_event_t_for_go{
 	uint64_t timestamp;
 	char *name;
 	uint32_t category;
 	uint16_t paramsNumber;
     uint64_t latency;
-    struct KeyValue {
-	char *key;
-	char* value;
-	uint32_t len;
-	uint32_t valueType;
-    }userAttributes[16];
+    KeyValue userAttributes[16];
     struct event_context {
         struct thread_info {
             uint32_t pid;

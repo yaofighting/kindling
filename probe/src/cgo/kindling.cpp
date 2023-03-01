@@ -11,7 +11,7 @@
 #include "sinsp_capture_interrupt_exception.h"
 
 #include "converter/cpu_converter.h"
-#include "socket_utils.h"
+#include "tcp_packets_analyzer.h"
 
 cpu_converter* cpuConverter;
 fstream debug_file_log;
@@ -166,27 +166,26 @@ int init_probe() {
 }
 
 int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
-  tcp_handshake_buffer_elem *elem = new tcp_handshake_buffer_elem[500000];
-  tcp_datainfo *data = new tcp_datainfo[800000];
+  tcp_handshake_buffer_elem *handshake = new tcp_handshake_buffer_elem[MAX_TCP_BUFFER_LEN];
+  tcp_datainfo *data = new tcp_datainfo[MAX_TCP_BUFFER_LEN];
   int raw_data_len;
   *(int *)count = 0;
 
   //get tcp handshake rtt data
-  int32_t ret = inspector->get_tcp_handshake_rtt(elem, &raw_data_len);
+  tcp_handshake_analyzer hds_analyzer;
+  tcp_packets_analyzer tp_analyzer;
+  int32_t ret = inspector->get_tcp_handshake_rtt(handshake, &raw_data_len, MAX_TCP_BUFFER_LEN);
   if(ret == 0){
-    ret = aggregate_tcp_handshake_rtt(elem, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+    hds_analyzer.aggregate_handshake_info(handshake, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
   }
-  delete []elem;
+  delete []handshake;
 
   //get tcp packet counts
-  ret = inspector->get_tcp_datainfo(data, &raw_data_len);
+  ret = inspector->get_tcp_datainfo(data, &raw_data_len, MAX_TCP_BUFFER_LEN);
   if(ret == 0){
-    ret = get_total_tcp_packets(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
-    if(ret == 0){
-      ret = get_tcp_ack_delay(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
-    }
+    tp_analyzer.get_total_tcp_packets(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+    tp_analyzer.get_tcp_ack_delay(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
   }
-
   delete []data;
   return ret;
 }

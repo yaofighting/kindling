@@ -117,7 +117,7 @@ func (t *TcpPacketsAnalyzer) generateHandshakeRtt(event *model.KindlingEvent) (*
 		metrics = append(metrics, model.NewIntMetric(constnames.TcpHandshakeAckRttMetricName, int64(ackrttDelta)))
 	}
 
-	t.telemetry.Logger.Debug(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
+	// t.telemetry.Logger.Info(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
 	return model.NewDataGroup(constnames.TcpHandshakeRttGroupName, labels, uint64(startTime), metrics...), nil
 }
 
@@ -129,10 +129,14 @@ func (t *TcpPacketsAnalyzer) generateTcpPacketCount(event *model.KindlingEvent) 
 	}
 	// get delta info
 	packetCounts := event.GetUintUserAttribute("packet_counts")
+	directionType := event.GetIntUserAttribute("direction_type")
 
-	metric := model.NewIntMetric(constnames.TcpPacketCountsMetricName, int64(packetCounts))
-	t.telemetry.Logger.Debug(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
-	return model.NewDataGroup(constnames.TcpPacketCountsGroupName, labels, uint64(time.Now().Unix()), metric), nil
+	metrics := make([]*model.Metric, 0, 2)
+	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketCountsMetricName, int64(packetCounts)))
+	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketCountsDirectionMetricName, int64(directionType)))
+
+	// t.telemetry.Logger.Info(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
+	return model.NewDataGroup(constnames.TcpPacketCountsGroupName, labels, uint64(time.Now().Unix()), metrics...), nil
 }
 
 func (t *TcpPacketsAnalyzer) generateTcpAckDelay(event *model.KindlingEvent) (*model.DataGroup, error) {
@@ -153,7 +157,7 @@ func (t *TcpPacketsAnalyzer) generateTcpAckDelay(event *model.KindlingEvent) (*m
 	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketEndtimeMetricName, int64(endTime)))
 	metrics = append(metrics, model.NewIntMetric(constnames.TcpPacketAcktimeMetricName, int64(acktimeDelta)))
 
-	t.telemetry.Logger.Debug(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
+	// t.telemetry.Logger.Info(fmt.Sprintf("Event Output: %+v", model.TextKindlingEvent(event)))
 	return model.NewDataGroup(constnames.TcpAckDelayGroupName, labels, uint64(startTime), metrics...), nil
 }
 

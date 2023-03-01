@@ -72,7 +72,7 @@ func (r *CgoReceiver) Start() error {
 	// Wait for the C routine running
 	time.Sleep(2 * time.Second)
 	go r.consumeEvents()
-	go r.startGetTcpPacketsEvent(30 * time.Second)
+	go r.startGetTcpPacketsEvent(10 * time.Second)
 	go r.startGetEvent()
 	return nil
 }
@@ -104,7 +104,6 @@ func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
 			if res == 0 {
 				for i := 0; i < count; i++ {
 					event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent[i]))
-					//r.telemetry.Logger.Infof("get tcp_packets_event...")
 					r.eventChannel <- event
 					r.stats.add(event.Name, 1)
 				}
