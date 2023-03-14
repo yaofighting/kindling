@@ -96,7 +96,7 @@ func (t *TcpPacketsAnalyzer) ConsumeEvent(event *model.KindlingEvent) error {
 
 func (t *TcpPacketsAnalyzer) generateHandshakeRtt(event *model.KindlingEvent) (*model.DataGroup, error) {
 	//get tuple label:  (sip,dip,dport)
-	labels, err := t.getTupleLabels(event, Triple)
+	labels, err := t.getTupleLabels(event, Quadruples)
 	if err != nil {
 		return nil, err
 	}
@@ -123,7 +123,7 @@ func (t *TcpPacketsAnalyzer) generateHandshakeRtt(event *model.KindlingEvent) (*
 
 func (t *TcpPacketsAnalyzer) generateTcpPacketCount(event *model.KindlingEvent) (*model.DataGroup, error) {
 	//get tuple label:  (sip,dip)
-	labels, err := t.getTupleLabels(event, Pair)
+	labels, err := t.getTupleLabels(event, Quadruples)
 	if err != nil {
 		return nil, err
 	}
@@ -141,7 +141,7 @@ func (t *TcpPacketsAnalyzer) generateTcpPacketCount(event *model.KindlingEvent) 
 
 func (t *TcpPacketsAnalyzer) generateTcpAckDelay(event *model.KindlingEvent) (*model.DataGroup, error) {
 	//get tuple label:  (sip,dip)
-	labels, err := t.getTupleLabels(event, Pair)
+	labels, err := t.getTupleLabels(event, Quadruples)
 	if err != nil {
 		return nil, err
 	}
@@ -178,6 +178,16 @@ func (t *TcpPacketsAnalyzer) getTupleLabels(event *model.KindlingEvent, tpType t
 		}
 		dPortUint := dPort.GetUintValue()
 		labels.AddIntValue(constlabels.DstPort, int64(dPortUint))
+	case Quadruples:
+		sPort := event.GetUserAttribute("sport")
+		dPort := event.GetUserAttribute("dport")
+		if sPort == nil || dPort == nil {
+			return nil, fmt.Errorf("sport or dport is nil for event %s", event.Name)
+		}
+		sPortUint := sPort.GetUintValue()
+		dPortUint := dPort.GetUintValue()
+		labels.AddIntValue(constlabels.DstPort, int64(dPortUint))
+		labels.AddIntValue(constlabels.SrcPort, int64(sPortUint))
 	}
 
 	sIpString := model.IPLong2String(uint32(sIp.GetUintValue()))

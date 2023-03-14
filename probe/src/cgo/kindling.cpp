@@ -172,8 +172,8 @@ int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
   *(int *)count = 0;
 
   //get tcp handshake rtt data
-  tcp_handshake_analyzer hds_analyzer;
-  tcp_packets_analyzer tp_analyzer;
+  tcp_handshake_analyzer hds_analyzer(inspector);
+  tcp_packets_analyzer tp_analyzer(inspector);
   int32_t ret = inspector->get_tcp_handshake_rtt(handshake, &raw_data_len, MAX_TCP_BUFFER_LEN);
   if(ret == 0){
     hds_analyzer.aggregate_handshake_info(handshake, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
