@@ -1,5 +1,5 @@
 #include "tcp_packets_analyzer.h"
-#include "utils.h"
+#include "../cgo/utils.h"
 
 #define PROC_NET_ROUTE "/proc/net/route"
 void tcp_analyer_base::init_virtual_interface_ip() {

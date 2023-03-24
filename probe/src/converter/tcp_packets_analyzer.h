@@ -9,7 +9,7 @@
 #include <iomanip>
 #include <iostream>
 #include <net/if.h>
-#include "kindling.h"
+#include "../cgo/kindling.h"
 
 const int MAX_TCP_BUFFER_LEN = 1024 * 512;
 

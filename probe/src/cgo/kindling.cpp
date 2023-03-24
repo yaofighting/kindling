@@ -11,7 +11,7 @@
 #include "sinsp_capture_interrupt_exception.h"
 
 #include "converter/cpu_converter.h"
-#include "tcp_packets_analyzer.h"
+#include "../converter/tcp_packets_analyzer.h"
 
 cpu_converter* cpuConverter;
 fstream debug_file_log;
