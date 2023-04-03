@@ -108,7 +108,7 @@ tcp_tuple tcp_analyer_base::get_reverse_tuple(tcp_tuple* tp) {
 void tcp_analyer_base::init_tcp_kindling_event(kindling_event_t_for_go* p_kindling_event) {
   p_kindling_event->name = (char*)malloc(sizeof(char) * 1024);
 
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < 10; i++) {
     p_kindling_event->userAttributes[i].key = (char*)malloc(sizeof(char) * 128);
     p_kindling_event->userAttributes[i].value = (char*)malloc(sizeof(char) * EVENT_DATA_SIZE);
   }
