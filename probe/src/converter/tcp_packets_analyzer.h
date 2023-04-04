@@ -21,12 +21,20 @@ struct agg_handshake_rtt_value {
   uint64_t end_time;
 };
 
+struct interface_info{
+	int ifindex;
+	uint32_t ip;
+	uint32_t netmask;
+};
+
 class tcp_analyer_base {
   unordered_map<uint32_t, uint32_t> host_map;
 
  public:
   sinsp* inspector;
-  void init_virtual_interface_ip();
+	interface_info cni0;
+	void init_virtual_interface_ip();
+	bool is_ip_from_cni0_network(uint32_t ip);
   void init_host_ip();
   uint32_t get_interface_by_ip(uint32_t ip_int);
   void ipv4_int_to_str(uint32_t ip, char ip_str[]);
