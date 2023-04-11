@@ -11,6 +11,8 @@ extern "C" {
 int runForGo();
 int getKindlingEvent(void** kindlingEvent);
 int getTcpPacketsEvent(void *tcpKindlingEvent, void *count);
+int getExceptionNetEvent(void *tcpKindlingEvent, void *count);
+int analyzePacketsEvent();
 void subEventForGo(char* eventName, char* category, void* params);
 int startProfile();
 int stopProfile();

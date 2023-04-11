@@ -61,6 +61,7 @@ bool tcp_analyer_base::is_ip_from_cni0_network(uint32_t ip)
 	return net == cni0.ip;
 }
 
+
 void tcp_analyer_base::init_host_ip() {
   struct ifaddrs *ifaddr, *ifa;
   int family, s, ifcount = 0, pifcount = 0;

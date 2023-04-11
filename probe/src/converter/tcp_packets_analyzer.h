@@ -21,25 +21,33 @@ struct agg_handshake_rtt_value {
   uint64_t end_time;
 };
 
+
 struct interface_info{
-	int ifindex;
-	uint32_t ip;
-	uint32_t netmask;
+  int ifindex;
+  uint32_t ip;
+  uint32_t netmask;
 };
 
 class tcp_analyer_base {
-  unordered_map<uint32_t, uint32_t> host_map;
+    unordered_map <uint32_t, uint32_t> host_map;
 
- public:
-  sinsp* inspector;
-	interface_info cni0;
-	void init_virtual_interface_ip();
-	bool is_ip_from_cni0_network(uint32_t ip);
-  void init_host_ip();
-  uint32_t get_interface_by_ip(uint32_t ip_int);
-  void ipv4_int_to_str(uint32_t ip, char ip_str[]);
-  tcp_tuple get_reverse_tuple(tcp_tuple* tp);
-  void init_tcp_kindling_event(kindling_event_t_for_go* p_kindling_event);
+public:
+    sinsp *inspector;
+    interface_info cni0;
+
+    void init_virtual_interface_ip();
+
+    bool is_ip_from_cni0_network(uint32_t ip);
+
+    void init_host_ip();
+
+    uint32_t get_interface_by_ip(uint32_t ip_int);
+
+    void ipv4_int_to_str(uint32_t ip, char ip_str[]);
+
+    tcp_tuple get_reverse_tuple(tcp_tuple *tp);
+
+    void init_tcp_kindling_event(kindling_event_t_for_go *p_kindling_event);
 };
 
 struct tcp_tuple_hash {

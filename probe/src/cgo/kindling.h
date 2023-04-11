@@ -26,6 +26,10 @@ void exipre_window_cache();
 
 int get_tcp_packets_event(void *tcpKindlingEvent, void *count);
 
+int analyze_packets_event();
+
+int get_exception_net_event(void *tcpKindlingEvent, void *count);
+
 int getEvent(void** kindlingEvent);
 
 uint16_t get_kindling_category(sinsp_evt* sEvt);

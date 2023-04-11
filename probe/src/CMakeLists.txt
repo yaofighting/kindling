@@ -12,7 +12,7 @@ set(SOURCE_FILES
 		cgo/utils.cpp
 		converter/tcp_packets_analyzer.cpp
 		converter/cpu_converter.cpp
-        cgo/catch_sig.cpp cgo/catch_sig.h)
+        cgo/catch_sig.cpp cgo/catch_sig.h converter/net_path_track.cpp converter/net_path_track.h)
 
 add_library(kindling SHARED ${SOURCE_FILES})
 set(CMAKE_POSITION_INDEPENDENT_CODE ON)

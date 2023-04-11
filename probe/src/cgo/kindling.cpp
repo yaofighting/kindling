@@ -8,6 +8,7 @@
 #include <iostream>
 #include <thread>
 #include "scap_open_exception.h"
+#include "converter/net_path_track.h"
 #include "sinsp_capture_interrupt_exception.h"
 
 #include "converter/cpu_converter.h"
@@ -17,6 +18,7 @@ cpu_converter* cpuConverter;
 fstream debug_file_log;
 map<uint64_t, char*> ptid_comm;
 static sinsp* inspector = nullptr;
+static tcp_analyer_base* tcb = nullptr;
 sinsp_evt_formatter* formatter = nullptr;
 bool printEvent = false;
 int cnt = 0;
@@ -41,6 +43,7 @@ char* finish_char = new char[4];
 char* kd_stack = new char[1024];
 char* duration_char = new char[32];
 char* span_char = new char[1024];
+net_path_track* npt;
 
 int16_t event_filters[1024][16];
 
@@ -128,7 +131,6 @@ void set_snaplen(sinsp* inspector) {
 int init_probe() {
   int argc = 1;
   QCoreApplication app(argc, 0);
-
   // w.show();
   QObject* object;
   app.addLibraryPath(QString("../KindlingPlugin"));  // 加入库路径
@@ -149,14 +151,16 @@ int init_probe() {
       "(%thread.tid:%thread.vtid) %evt.dir %evt.type %evt.info";
 
   try {
+    tcb = new tcp_analyer_base();
     inspector = new sinsp();
     formatter = new sinsp_evt_formatter(inspector, output_format);
     inspector->set_hostname_and_port_resolution_mode(false);
+
     set_snaplen(inspector);
     suppress_events_comm(inspector);
     inspector->open("");
     set_eventmask(inspector);
-
+    npt = new net_path_track(inspector);
     cpuConverter = new cpu_converter(inspector);
   } catch (const exception& e) {
     fprintf(stderr, "kindling probe init err: %s", e.what());
@@ -188,6 +192,28 @@ int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
   }
   delete []data;
   return ret;
+}
+
+int analyze_packets_event() {
+  tcp_raw_data *tcp_raw = new tcp_raw_data[MAX_TCP_BUFFER_LEN];
+  int raw_data_len;
+  //net_path_track npt(inspector);
+  int32_t ret = inspector->get_tcp_raw_data(tcp_raw, &raw_data_len, MAX_TCP_BUFFER_LEN);
+  if(ret == 0){
+    npt->analyze_net_track(tcp_raw, raw_data_len);
+  }
+  cout<<"ret:"<<ret<<"raw_data_len:"<<raw_data_len<<endl;
+  npt->countTimeoutEvent();
+  delete []tcp_raw;
+  return 0;
+}
+
+int get_exception_net_event(void *tcpKindlingEvent, void *count){
+  cout<<"get_exception_net_event"<<endl;
+  *(int *)count = 0;
+  //net_path_track npt(inspector);
+  npt->get_exception_event((kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+  return 0;
 }
 
 int getEvent(void** pp_kindling_event) {

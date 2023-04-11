@@ -9,9 +9,11 @@
 extern "C" {
 #endif
 int runForGo();
-int getKindlingEvent(void **kindlingEvent);
+int getKindlingEvent(void** kindlingEvent);
 int getTcpPacketsEvent(void *tcpKindlingEvent, void *count);
-int subEventForGo(char* eventName, char* category, void *params);
+int getExceptionNetEvent(void *tcpKindlingEvent, void *count);
+int analyzePacketsEvent();
+void subEventForGo(char* eventName, char* category, void* params);
 int startProfile();
 int stopProfile();
 char* startAttachAgent(int pid);

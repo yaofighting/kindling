@@ -91,6 +91,7 @@ func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
 	}
 
 	tcpKindlingEvent := make([]CKindlingEventForGo, 65535)
+	tcpKindlingEvent2 := make([]CKindlingEventForGo, 65535)
 	var count int = 0
 	// var pKindlingEvent unsafe.Pointer
 	r.shutdownWG.Add(1)
@@ -107,6 +108,15 @@ func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
 					r.eventChannel <- event
 					r.stats.add(event.Name, 1)
 				}
+			}
+			count = 0
+			fmt.Println("bbbbbb")
+			C.analyzePacketsEvent()
+			C.getExceptionNetEvent((unsafe.Pointer)(&tcpKindlingEvent2[0]), (unsafe.Pointer)(&count))
+			for i := 0; i < count; i++ {
+				event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent2[i]))
+				r.eventChannel <- event
+				r.stats.add(event.Name, 1)
 			}
 		}
 	}

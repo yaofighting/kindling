@@ -65,7 +65,7 @@ else ()
 	set(CMD_MAKE make)
 endif ()
 
-##set(CMAKE_PREFIX_PATH "/opt/homebrew/Cellar/qt/6.3.1_3/bin/qt-cmake")
+#set(CMAKE_PREFIX_PATH "/opt/homebrew/Cellar/qt/6.3.1_3/bin/qt-cmake")
 find_package(Qt5 COMPONENTS
 		Core
 		Gui

@@ -9,7 +9,14 @@
 int runForGo() { return init_probe(); }
 
 int getKindlingEvent(void** kindlingEvent) { return getEvent(kindlingEvent); }
-int getTcpPacketsEvent(void *tcpKindlingEvent, void *count) { return get_tcp_packets_event(tcpKindlingEvent, count); }
+int getTcpPacketsEvent(void *tcpKindlingEvent, void *count) {
+  return get_tcp_packets_event(tcpKindlingEvent, count);
+}
+
+int getExceptionNetEvent(void *tcpKindlingEvent, void *count) {
+  return get_exception_net_event(tcpKindlingEvent, count);
+}
+int analyzePacketsEvent() { return analyze_packets_event(); }
 
 int startProfile() { return start_profile(); }
 int stopProfile() { return stop_profile(); }
