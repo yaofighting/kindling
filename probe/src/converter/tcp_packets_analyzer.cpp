@@ -166,8 +166,16 @@ void tcp_handshake_analyzer::aggregate_handshake_info(tcp_handshake_buffer_elem*
   for (auto& e : handshake_agg_map) {
     if (get_interface_by_ip(e.first.saddr) == e.first.ifindex) {
       e.second.ackrtt_delta = -1;  // If host is a client, ackrtt is invalid
-    } else {
+    } else if(get_interface_by_ip(e.first.daddr) == e.first.ifindex) {
       e.second.synrtt_delta = -1;  // If host is a server, synrtt is invalid
+    }else{
+      bool src_flag = is_ip_from_cni0_network(e.first.saddr);
+      bool dst_flag = is_ip_from_cni0_network(e.first.daddr);
+      if(src_flag && !dst_flag){
+        e.second.ackrtt_delta = -1;
+      }else if(!src_flag && dst_flag){
+        e.second.synrtt_delta = -1;
+      }
     }
 
     // fill the kindling event
@@ -207,7 +215,8 @@ void tcp_packets_analyzer::get_total_tcp_packets(tcp_datainfo* results, int* res
     if (results[i].timestamp == 0) continue;
     if (quadruples_total_map.find(results[i].tp) == quadruples_total_map.end()) {
       packets_total pt = packets_total{results[i].package_counts, 0};
-      if (get_interface_by_ip(results[i].tp.saddr) == results[i].tp.ifindex) {
+      if (get_interface_by_ip(results[i].tp.saddr) == results[i].tp.ifindex ||
+        (is_ip_from_cni0_network(results[i].tp.saddr) && !is_ip_from_cni0_network(results[i].tp.daddr))) {
         pt.direction_type = 1;
       }
       quadruples_total_map[results[i].tp] = pt;
@@ -247,8 +256,8 @@ void tcp_packets_analyzer::get_tcp_ack_delay(tcp_datainfo* results, int* reslen,
                                              kindling_event_t_for_go evt[], int* evtlen) {
   int i, evtcnt = *evtlen;
   for (i = 0; i < *reslen; i++) {
-    if (results[i].timestamp == 0) continue;
-    if (get_interface_by_ip(results[i].tp.saddr) != results[i].tp.ifindex) {
+    if (get_interface_by_ip(results[i].tp.daddr) == results[i].tp.ifindex
+        || is_ip_from_cni0_network(results[i].tp.daddr)) {
       ack_match_queue_map[results[i].tp].push(&results[i]);
       continue;  // only calculate src(host) ---> dst
     }

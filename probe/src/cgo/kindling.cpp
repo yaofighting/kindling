@@ -194,27 +194,62 @@ int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
   return ret;
 }
 
-int analyze_packets_event() {
+// int analyze_packets_event() {
+//   tcp_raw_data *tcp_raw = new tcp_raw_data[MAX_TCP_BUFFER_LEN];
+//   int raw_data_len;
+//   //net_path_track npt(inspector);
+//   int32_t ret = inspector->get_tcp_raw_data(tcp_raw, &raw_data_len, MAX_TCP_BUFFER_LEN);
+//   if(ret == 0){
+//     npt->analyze_net_track(tcp_raw, raw_data_len);
+//   }
+//   cout<<"ret:"<<ret<<"raw_data_len:"<<raw_data_len<<endl;
+//   npt->countTimeoutEvent();
+//   delete []tcp_raw;
+//   return 0;
+// }
+
+int analyze_pod_net_track_event(){
   tcp_raw_data *tcp_raw = new tcp_raw_data[MAX_TCP_BUFFER_LEN];
   int raw_data_len;
-  //net_path_track npt(inspector);
   int32_t ret = inspector->get_tcp_raw_data(tcp_raw, &raw_data_len, MAX_TCP_BUFFER_LEN);
   if(ret == 0){
-    npt->analyze_net_track(tcp_raw, raw_data_len);
+    npt->analyze_pod_net_track(tcp_raw, raw_data_len);
   }
-  cout<<"ret:"<<ret<<"raw_data_len:"<<raw_data_len<<endl;
-  npt->countTimeoutEvent();
   delete []tcp_raw;
   return 0;
 }
 
-int get_exception_net_event(void *tcpKindlingEvent, void *count){
-  cout<<"get_exception_net_event"<<endl;
+int get_pod_track_event(void *tcpKindlingEvent, void *count){
+  cout<<"get_pod_track_event"<<endl;
   *(int *)count = 0;
   //net_path_track npt(inspector);
-  npt->get_exception_event((kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+  npt->get_pod_track_event((kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
   return 0;
 }
+
+int update_focus_pod_info(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op){
+  pod_key k1 = {src, dst}, k2 = {dst, src};
+  pod_value v = {begin_time, end_time};
+  if(op == FOCUS_POD_UPDATE){
+    npt->focus_pod_map[k1] = v;
+    npt->focus_pod_ip[src]++;
+    npt->focus_pod_ip[dst]++;
+  }else if(op == FOCUS_POD_DELETE){
+    npt->focus_pod_map.erase(k1);
+    npt->focus_pod_map.erase(k2);
+    npt->focus_pod_ip.erase(src);
+    npt->focus_pod_ip.erase(dst);
+  }
+  return 0;
+}
+
+// int get_exception_net_event(void *tcpKindlingEvent, void *count){
+//   cout<<"get_exception_net_event"<<endl;
+//   *(int *)count = 0;
+//   //net_path_track npt(inspector);
+//   npt->get_exception_event((kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+//   return 0;
+// }
 
 int getEvent(void** pp_kindling_event) {
   int32_t res;

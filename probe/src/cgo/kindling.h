@@ -30,6 +30,12 @@ int analyze_packets_event();
 
 int get_exception_net_event(void *tcpKindlingEvent, void *count);
 
+int analyze_pod_net_track_event();
+
+int get_pod_track_event(void *tcpKindlingEvent, void *count);
+
+int update_focus_pod_info(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op);
+
 int getEvent(void** kindlingEvent);
 
 uint16_t get_kindling_category(sinsp_evt* sEvt);

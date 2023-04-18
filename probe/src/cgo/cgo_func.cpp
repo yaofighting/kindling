@@ -18,6 +18,14 @@ int getExceptionNetEvent(void *tcpKindlingEvent, void *count) {
 }
 int analyzePacketsEvent() { return analyze_packets_event(); }
 
+int analyzePodNetTrackEvent() { return analyze_pod_net_track_event();}
+int getPodTrackEvent(void *tcpKindlingEvent, void *count) {
+  return get_pod_track_event(tcpKindlingEvent, count);
+}
+int updateFocusPodInfo(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op){
+  return update_focus_pod_info(src, dst, begin_time, end_time, op);
+}
+
 int startProfile() { return start_profile(); }
 int stopProfile() { return stop_profile(); }
 
