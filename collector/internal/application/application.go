@@ -3,6 +3,8 @@ package application
 import (
 	"flag"
 	"fmt"
+	"github.com/Kindling-project/kindling/collector/pkg/component/analyzer/networkpkganalyzer"
+	"github.com/Kindling-project/kindling/collector/pkg/extension/detect"
 
 	"github.com/spf13/viper"
 	"go.uber.org/multierr"
@@ -33,6 +35,9 @@ type Application struct {
 	telemetry         *component.TelemetryManager
 	receiver          receiver.Receiver
 	analyzerManager   *analyzer.Manager
+
+	// Extension
+	dialTool *detect.Detect
 }
 
 func New() (*Application, error) {
@@ -88,6 +93,7 @@ func (a *Application) registerFactory() {
 	a.componentsFactory.RegisterAnalyzer(tcpconnectanalyzer.Type.String(), tcpconnectanalyzer.New, tcpconnectanalyzer.NewDefaultConfig())
 	a.componentsFactory.RegisterAnalyzer(tcppacketsanalyzer.Type.String(), tcppacketsanalyzer.New, &tcppacketsanalyzer.Config{})
 	a.componentsFactory.RegisterExporter(cameraexporter.Type, cameraexporter.New, cameraexporter.NewDefaultConfig())
+	a.componentsFactory.RegisterAnalyzer(networkpkganalyzer.NETWORKPKGANALYZER.String(), networkpkganalyzer.NewNetworkPkgAnalyzer, &networkpkganalyzer.Config{})
 }
 
 func (a *Application) readInConfig(path string) error {
@@ -101,6 +107,14 @@ func (a *Application) readInConfig(path string) error {
 	_ = a.controllerFactory.ConstructConfig(a.viper, a.telemetry.GetGlobalTelemetryTools())
 	if err != nil {
 		return fmt.Errorf("error happened while constructing config: %w", err)
+	}
+	cfg := &detect.Config{}
+	if err = a.viper.UnmarshalKey("extension.dial", cfg); err == nil {
+		if cfg.Enable {
+			a.dialTool = detect.NewDetect(*cfg, a.telemetry.GetTelemetryTools("dial").Logger)
+		} else {
+			a.dialTool = nil
+		}
 	}
 	return nil
 }
@@ -137,9 +151,10 @@ func (a *Application) buildPipeline() error {
 	tcpPacketsAnalyzer := tcpPacketsAnalyzerFactory.NewFunc(tcpPacketsAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(tcppacketsanalyzer.Type.String()), []consumer.Consumer{k8sMetadataProcessor})
 	cpuAnalyzerFactory := a.componentsFactory.Analyzers[cpuanalyzer.CpuProfile.String()]
 	cpuAnalyzer := cpuAnalyzerFactory.NewFunc(cpuAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(cpuanalyzer.CpuProfile.String()), []consumer.Consumer{cameraExporter})
-
+	networkPkgAnalyzerFactory := a.componentsFactory.Analyzers[networkpkganalyzer.NETWORKPKGANALYZER.String()]
+	networkPkgAnalyzer := networkPkgAnalyzerFactory.NewFunc(cpuAnalyzerFactory.Config, a.telemetry.GetTelemetryTools(networkpkganalyzer.NETWORKPKGANALYZER.String()), []consumer.Consumer{otelExporter})
 	// Initialize receiver packaged with multiple analyzers
-	analyzerManager, err := analyzer.NewManager(networkAnalyzer, tcpAnalyzer, tcpConnectAnalyzer, cpuAnalyzer, tcpPacketsAnalyzer)
+	analyzerManager, err := analyzer.NewManager(networkAnalyzer, tcpAnalyzer, tcpConnectAnalyzer, cpuAnalyzer, tcpPacketsAnalyzer, networkPkgAnalyzer)
 	if err != nil {
 		return fmt.Errorf("error happened while creating analyzer manager: %w", err)
 	}
@@ -153,6 +168,9 @@ func (a *Application) buildPipeline() error {
 		cpuAnalyzer.(*cpuanalyzer.CpuAnalyzer).ProfileModule,
 		cgoReceiver.(*cgoreceiver.CgoReceiver).ProfileModule,
 	)
-
+	//
+	//if a.dialTool != nil {
+	//	a.dialTool.Start()
+	//}
 	return nil
 }

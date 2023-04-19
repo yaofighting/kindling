@@ -11,6 +11,7 @@ package cgoreceiver
 import "C"
 import (
 	"fmt"
+	"net"
 	"sync"
 	"time"
 	"unsafe"
@@ -68,6 +69,8 @@ func (r *CgoReceiver) Start() error {
 	go r.getCaptureStatistics()
 	go r.catchSignalUp()
 	time.Sleep(2 * time.Second)
+	r.telemetry.Logger.Info("Start GetNetworkPkg")
+	go r.GetNetworkPkg()
 	_ = r.subEvent()
 	// Wait for the C routine running
 	time.Sleep(2 * time.Second)
@@ -75,6 +78,40 @@ func (r *CgoReceiver) Start() error {
 	go r.startGetTcpPacketsEvent(10 * time.Second)
 	go r.startGetEvent()
 	return nil
+}
+
+func ipToInt(ipStr string) (uint32, error) {
+	ip := net.ParseIP(ipStr)
+	if ip == nil {
+		return 0, fmt.Errorf("无效的IP地址: %s", ipStr)
+	}
+	ip = ip.To4()
+	if ip == nil {
+		return 0, fmt.Errorf("不支持IPv6地址: %s", ipStr)
+	}
+	return uint32(ip[0])<<24 + uint32(ip[1])<<16 + uint32(ip[2])<<8 + uint32(ip[3]), nil
+}
+
+func (r *CgoReceiver) GetNetworkPkg() {
+	ticker := time.NewTicker(time.Second * 2)
+	var count int = 0
+	npKindlingEvent := make([]CKindlingEventForGo, 65535)
+	for {
+		select {
+		case <-ticker.C:
+			res := int(C.getPodTrackEvent((unsafe.Pointer)(&npKindlingEvent[0]), (unsafe.Pointer)(&count)))
+			fmt.Println(res)
+			if res == 0 {
+				for i := 0; i < count; i++ {
+					event := convertEvent((*CKindlingEventForGo)(&npKindlingEvent[i]))
+					r.eventChannel <- event
+					r.stats.add(event.Name, 1)
+				}
+			}
+			C.analyzePodNetTrackEvent()
+			r.telemetry.Logger.Info("total_number_of_timeout_event: ", zap.Int("num", count))
+		}
+	}
 }
 
 func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
@@ -91,7 +128,6 @@ func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
 	}
 
 	tcpKindlingEvent := make([]CKindlingEventForGo, 65535)
-	tcpKindlingEvent2 := make([]CKindlingEventForGo, 65535)
 	var count int = 0
 	// var pKindlingEvent unsafe.Pointer
 	r.shutdownWG.Add(1)
@@ -110,14 +146,6 @@ func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
 				}
 			}
 			count = 0
-			fmt.Println("bbbbbb")
-			C.analyzePacketsEvent()
-			C.getExceptionNetEvent((unsafe.Pointer)(&tcpKindlingEvent2[0]), (unsafe.Pointer)(&count))
-			for i := 0; i < count; i++ {
-				event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent2[i]))
-				r.eventChannel <- event
-				r.stats.add(event.Name, 1)
-			}
 		}
 	}
 }

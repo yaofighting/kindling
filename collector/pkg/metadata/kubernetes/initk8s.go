@@ -30,6 +30,18 @@ const (
 	DefaultGraceDeletePeriod time.Duration = time.Second * 60
 )
 
+var DefaultDSFConfig *DSFConfig = &DSFConfig{
+	Enable:         false,
+	InitEndpoint:   "/hcmine/config/dsfInit",
+	UpdateEndpoint: "/hcmine/config/dsfUpdate",
+	SyncInterval:   5 * time.Second,
+}
+
+var DefaultMetaDataProviderConfig *MetaDataProviderConfig = &MetaDataProviderConfig{
+	Enable:   false,
+	Endpoint: "http://localhost:9504/listAndWatch",
+}
+
 var authTypes = map[AuthType]bool{
 	AuthTypeNone:           true,
 	AuthTypeServiceAccount: true,
@@ -59,34 +71,102 @@ var (
 	MetaDataCache = New()
 	KubeClient    *k8s.Clientset
 	once          sync.Once
+
+	dsfEnable bool = false
 )
+
+func RLockMetadataCache() {
+	MetaDataCache.cMut.RLock()
+	MetaDataCache.pMut.RLock()
+	MetaDataCache.sMut.RLock()
+	MetaDataCache.HostPortInfo.mutex.RLock()
+	GlobalNodeInfo.mutex.RLock()
+	GlobalRsInfo.mut.RLock()
+	GlobalServiceInfo.mut.RLock()
+}
+
+func RUnlockMetadataCache() {
+	MetaDataCache.cMut.RUnlock()
+	MetaDataCache.pMut.RUnlock()
+	MetaDataCache.sMut.RUnlock()
+	MetaDataCache.HostPortInfo.mutex.RUnlock()
+	GlobalNodeInfo.mutex.RUnlock()
+	GlobalRsInfo.mut.RUnlock()
+	GlobalServiceInfo.mut.RUnlock()
+}
+
+func SetPreprocessingMetaDataCache(cache *K8sMetaDataCache, nodeMap *NodeMap, serviceMap *ServiceMap, rsMap *ReplicaSetMap) {
+	for _, containersInfo := range cache.ContainerIdInfo {
+		GlobalPodInfo.add(containersInfo.RefPodInfo)
+	}
+	GlobalNodeInfo = nodeMap
+	GlobalServiceInfo = serviceMap
+	GlobalRsInfo = rsMap
+	MetaDataCache.ContainerIdInfo = cache.ContainerIdInfo
+	MetaDataCache.HostPortInfo = cache.HostPortInfo
+	MetaDataCache.IpContainerInfo = cache.IpContainerInfo
+	MetaDataCache.IpServiceInfo = cache.IpServiceInfo
+}
 
 func InitK8sHandler(options ...Option) error {
 	var retErr error
 	once.Do(func() {
 		k8sConfig := config{
-			KubeAuthType:      AuthTypeKubeConfig,
-			KubeConfigDir:     DefaultKubeConfigPath,
-			GraceDeletePeriod: DefaultGraceDeletePeriod,
+			KubeAuthType:           AuthTypeKubeConfig,
+			KubeConfigDir:          DefaultKubeConfigPath,
+			GraceDeletePeriod:      DefaultGraceDeletePeriod,
+			DSFConfig:              DefaultDSFConfig,
+			MetaDataProviderConfig: DefaultMetaDataProviderConfig,
 		}
 		for _, option := range options {
 			option(&k8sConfig)
 		}
 
-		clientSet, err := initClientSet(string(k8sConfig.KubeAuthType), k8sConfig.KubeConfigDir)
-		if err != nil {
-			retErr = fmt.Errorf("cannot connect to kubernetes: %w", err)
-			return
+		if k8sConfig.DSFConfig.Enable {
+			dsfEnable = true
+			dsfConfig := k8sConfig.DSFConfig
+			configServerClient := NewConfigServerClient(
+				InitDSFEndpoint(dsfConfig.ConfigServerAddr, dsfConfig.InitEndpoint),
+				UpdateDSFEndpoint(dsfConfig.ConfigServerAddr, dsfConfig.UpdateEndpoint))
+			MetaDataCache.dsfRuleInfo.enableDebug = k8sConfig.DSFConfig.EnableDebug
+			go MetaDataCache.dsfRuleInfo.ContinueSyncDSFRuleMapWithConfigServer(configServerClient.InitDSF, configServerClient.UpdateDSF, k8sConfig.DSFConfig.SyncInterval)
 		}
-		go NodeWatch(clientSet)
-		time.Sleep(1 * time.Second)
-		go RsWatch(clientSet)
-		time.Sleep(1 * time.Second)
-		go ServiceWatch(clientSet)
-		time.Sleep(1 * time.Second)
-		go PodWatch(clientSet, k8sConfig.GraceDeletePeriod)
-		time.Sleep(1 * time.Second)
-		KubeClient = clientSet
+
+		if k8sConfig.MetaDataProviderConfig.Enable {
+			stopCh := make(chan struct{})
+			if enableGraceDeletePeriod {
+				go podDeleteLoop(10*time.Second, k8sConfig.GraceDeletePeriod, stopCh)
+			}
+			go func() {
+				for {
+					for i := 0; i < 3; i++ {
+						err := k8sConfig.listAndWatchFromProvider()
+						if err != nil {
+							fmt.Printf("listAndWatch From Provider failled! Error: %d", err)
+						}
+					}
+
+					// Failed after 3 times
+					fmt.Printf("listAndWatch From Provider failled for 3 time, will retry after 1 minute")
+					time.Sleep(1 * time.Minute)
+				}
+			}()
+		} else {
+			clientSet, err := initClientSet(string(k8sConfig.KubeAuthType), k8sConfig.KubeConfigDir)
+			if err != nil {
+				retErr = fmt.Errorf("cannot connect to kubernetes: %w", err)
+				return
+			}
+			go NodeWatch(clientSet, k8sConfig.nodeEventHander)
+			time.Sleep(1 * time.Second)
+			go RsWatch(clientSet, k8sConfig.rsEventHander)
+			time.Sleep(1 * time.Second)
+			go ServiceWatch(clientSet, k8sConfig.serviceEventHander)
+			time.Sleep(1 * time.Second)
+			go PodWatch(clientSet, k8sConfig.GraceDeletePeriod, k8sConfig.podEventHander)
+			time.Sleep(1 * time.Second)
+			KubeClient = clientSet
+		}
 	})
 	return retErr
 }

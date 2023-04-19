@@ -133,10 +133,12 @@ void net_path_track::analyze_pod_net_track(tcp_raw_data* results, int len){
     || (focus_pod_ip.find(results[i].tp.saddr) == focus_pod_ip.end() && focus_pod_ip.find(results[i].tp.daddr) == focus_pod_ip.end())){
       continue;
     }
+//    cout<<"ts:"<<results[i].timestamp<<endl;
+//    printf("push into ip_to_seq_map... saddr = %u, daddr = %u, seq = %u\n", results[i].tp.saddr, results[i].tp.daddr, results[i].seq);
     ip_to_seq_map[results[i].tp.daddr].emplace_back(results[i].tp.saddr, results[i].seq, results[i].timestamp);
     ip_to_seq_map[results[i].tp.saddr].emplace_back(results[i].tp.daddr, results[i].seq, results[i].timestamp);
-
-    pod_track_map[results[i].seq].emplace_back(results[i].tp, results[i].seq, results[i].timestamp);
+    pod_track_data ptd =  pod_track_data(results[i].tp, results[i].seq, results[i].timestamp);
+    pod_track_map[results[i].seq].emplace_back(ptd);
   }
 
 }
@@ -159,8 +161,8 @@ void net_path_track::consume_pod_track_by_seq(kindling_event_t_for_go evt[], int
     fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 7, userAttNumber);
     evt[evtcnt].paramsNumber = userAttNumber;
     evtcnt++;
-    printf("consume_pod_track_by_seq...sip = %u, dip = %u, sport = %d, dport =%d, ifindex = %d, seq = %u, timestamp = %llu\n",
-      event.tp.saddr, event.tp.daddr, event.tp.sport, event.tp.dport, event.tp.ifindex, event.seq, event.timestamp);
+//    printf("consume_pod_track_by_seq...sip = %u, dip = %u, sport = %d, dport =%d, ifindex = %d, seq = %u, timestamp = %llu\n",
+//      event.tp.saddr, event.tp.daddr, event.tp.sport, event.tp.dport, event.tp.ifindex, event.seq, event.timestamp);
     pod_track_map.erase(seq);
   }
 }
@@ -193,7 +195,6 @@ void net_path_track::get_pod_track_event(kindling_event_t_for_go evt[], int* evt
       consume_pod_track_by_seq(evt, evtcnt, focus_seq.seq, pod_pair.second.begin_time, pod_pair.second.end_time);
     }
   }
-
   chrono::nanoseconds ns = std::chrono::duration_cast< std::chrono::nanoseconds>(
       std::chrono::system_clock::now().time_since_epoch()
   );
@@ -219,5 +220,6 @@ void net_path_track::get_pod_track_event(kindling_event_t_for_go evt[], int* evt
       it++;
     }
   }
+  *evt_len = evtcnt;
 
 }

@@ -52,6 +52,7 @@ const (
 	Container       = "container"
 	Ip              = "ip"
 	Port            = "port"
+	IfIndex         = "ifindex"
 
 	// EndTimestamp is the end timestamp of a trace
 	EndTimestamp = "end_timestamp"

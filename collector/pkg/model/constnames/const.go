@@ -22,6 +22,8 @@ const (
 	TcpConnectEvent        = "tcp_connect"
 	TcpSetStateEvent       = "tcp_set_state"
 
+	PodNetTrackEvent = "pod_net_track"
+
 	CpuEvent           = "cpu_event"
 	JavaFutexInfo      = "java_futex_info"
 	TransactionIdEvent = "apm_trace_id_event"
@@ -47,4 +49,5 @@ const (
 	TcpHandshakeRttGroupName     = "tcp_handshake_rtt_metric_group"
 	TcpPacketCountsGroupName     = "tcp_packet_counts_metric_group"
 	TcpAckDelayGroupName         = "tcp_ack_delay_metric_group"
+	NetworkPackageGroupName      = "network_package_group"
 )

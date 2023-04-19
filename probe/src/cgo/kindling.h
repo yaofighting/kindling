@@ -26,9 +26,9 @@ void exipre_window_cache();
 
 int get_tcp_packets_event(void *tcpKindlingEvent, void *count);
 
-int analyze_packets_event();
-
-int get_exception_net_event(void *tcpKindlingEvent, void *count);
+//int analyze_packets_event();
+//
+//int get_exception_net_event(void *tcpKindlingEvent, void *count);
 
 int analyze_pod_net_track_event();
 

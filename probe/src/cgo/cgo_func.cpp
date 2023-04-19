@@ -13,10 +13,10 @@ int getTcpPacketsEvent(void *tcpKindlingEvent, void *count) {
   return get_tcp_packets_event(tcpKindlingEvent, count);
 }
 
-int getExceptionNetEvent(void *tcpKindlingEvent, void *count) {
-  return get_exception_net_event(tcpKindlingEvent, count);
-}
-int analyzePacketsEvent() { return analyze_packets_event(); }
+//int getExceptionNetEvent(void *tcpKindlingEvent, void *count) {
+//  return get_exception_net_event(tcpKindlingEvent, count);
+//}
+//int analyzePacketsEvent() { return analyze_packets_event(); }
 
 int analyzePodNetTrackEvent() { return analyze_pod_net_track_event();}
 int getPodTrackEvent(void *tcpKindlingEvent, void *count) {

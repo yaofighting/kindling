@@ -22,7 +22,7 @@ struct pod_track_data {
   struct tcp_tuple tp;
   uint32_t seq;
   uint64_t timestamp;
-  pod_track_data(struct tcp_tuple tt, uint32_t sq, uint32_t t):tp(tt), seq(sq), timestamp(t){}
+  pod_track_data(struct tcp_tuple tt, uint32_t sq, uint64_t t):tp(tt), seq(sq), timestamp(t){}
 };
 
 struct pod_key {

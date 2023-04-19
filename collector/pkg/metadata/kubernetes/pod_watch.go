@@ -2,6 +2,7 @@ package kubernetes
 
 import (
 	"fmt"
+	"os"
 	_ "path/filepath"
 	"strings"
 	"sync"
@@ -19,6 +20,10 @@ import (
 	"github.com/Kindling-project/kindling/collector/pkg/compare"
 )
 
+func init() {
+	hostIp = getHostIpFromEnv()
+}
+
 type podMap struct {
 	// namespace:
 	//   podName: podInfo{}
@@ -26,7 +31,9 @@ type podMap struct {
 	mutex sync.RWMutex
 }
 
-var globalPodInfo = newPodMap()
+var GlobalPodInfo = newPodMap()
+var hostIp string
+var enableGraceDeletePeriod bool = true
 
 func newPodMap() *podMap {
 	return &podMap{
@@ -90,7 +97,11 @@ func (m *podMap) getPodsMatchSelectors(namespace string, selectors map[string]st
 	return retPodInfoSlice
 }
 
-func PodWatch(clientSet *kubernetes.Clientset, graceDeletePeriod time.Duration) {
+func PodWatch(clientSet *kubernetes.Clientset, graceDeletePeriod time.Duration, handler cache.ResourceEventHandler) {
+	if graceDeletePeriod == 0 {
+		enableGraceDeletePeriod = false
+	}
+
 	stopper := make(chan struct{})
 	defer close(stopper)
 
@@ -106,17 +117,24 @@ func PodWatch(clientSet *kubernetes.Clientset, graceDeletePeriod time.Duration) 
 		runtime.HandleError(fmt.Errorf("timed out waiting for caches to sync"))
 		return
 	}
-	go podDeleteLoop(10*time.Second, graceDeletePeriod, stopper)
-	informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
-		AddFunc:    onAdd,
-		UpdateFunc: OnUpdate,
-		DeleteFunc: onDelete,
-	})
+	if enableGraceDeletePeriod {
+		go podDeleteLoop(10*time.Second, graceDeletePeriod, stopper)
+	}
+
+	if handler == nil {
+		informer.AddEventHandler(cache.ResourceEventHandlerFuncs{
+			AddFunc:    PodAdd,
+			UpdateFunc: PodUpdate,
+			DeleteFunc: PodDelete,
+		})
+	} else {
+		informer.AddEventHandler(handler)
+	}
 	// TODO: use workqueue to avoid blocking
 	<-stopper
 }
 
-func onAdd(obj interface{}) {
+func PodAdd(obj interface{}) {
 	pod := obj.(*corev1.Pod)
 
 	// Find the controller workload of the pod
@@ -125,7 +143,7 @@ func onAdd(obj interface{}) {
 	rsUpdateMutex.RUnlock()
 
 	// Find one of the services of the pod
-	serviceInfoSlice := globalServiceInfo.GetServiceMatchLabels(pod.Namespace, pod.Labels)
+	serviceInfoSlice := GlobalServiceInfo.GetServiceMatchLabels(pod.Namespace, pod.Labels)
 	var serviceInfo *K8sServiceInfo
 	if len(serviceInfoSlice) == 0 {
 		serviceInfo = nil
@@ -159,6 +177,8 @@ func onAdd(obj interface{}) {
 	}
 
 	// Add containerId map
+	var portMap PortMap
+	var err error
 	for _, containerStatus := range pod.Status.ContainerStatuses {
 		shortenContainerId := TruncateContainerId(containerStatus.ContainerID)
 		if shortenContainerId == "" {
@@ -171,6 +191,24 @@ func onAdd(obj interface{}) {
 			RefPodInfo:  cachePodInfo,
 		}
 		MetaDataCache.AddByContainerId(shortenContainerId, containerInfo)
+		if dsfEnable &&
+			portMap == nil &&
+			pod.Status.HostIP == hostIp &&
+			runtimeService != nil &&
+			pod.Status.Phase == corev1.PodRunning {
+			portMap, err = runtimeService.GetPortMappingByContainerId(TruncateComplateContainerId(containerStatus.ContainerID))
+			if err != nil {
+				fmt.Printf("Failed to get portMap for container: %v,err is : %v\n", TruncateContainerId(containerStatus.ContainerID), err)
+			}
+		}
+		if len(portMap) > 0 {
+			for _, containerSpec := range pod.Spec.Containers {
+				if containerSpec.Name == containerStatus.Name {
+					MetaDataCache.AddDSFRuleByContainerPorts(containerSpec.Ports, portMap, containerInfo)
+					break
+				}
+			}
+		}
 	}
 
 	// Add pod IP and port map
@@ -207,7 +245,7 @@ func onAdd(obj interface{}) {
 			}
 		}
 	}
-	globalPodInfo.add(cachePodInfo)
+	GlobalPodInfo.add(cachePodInfo)
 }
 
 func getControllerKindName(pod *corev1.Pod) (workloadKind string, workloadName string) {
@@ -220,7 +258,7 @@ func getControllerKindName(pod *corev1.Pod) (workloadKind string, workloadName s
 			// The owner of Pod is ReplicaSet, and it is Workload such as Deployment for ReplicaSet.
 			// Therefore, find ReplicaSet's name in 'globalRsInfo' to find which kind of workload
 			// the Pod belongs to.
-			if workload, ok := globalRsInfo.GetOwnerReference(mapKey(pod.Namespace, owner.Name)); ok {
+			if workload, ok := GlobalRsInfo.GetOwnerReference(mapKey(pod.Namespace, owner.Name)); ok {
 				workloadKind = CompleteGVK(workload.APIVersion, strings.ToLower(workload.Kind))
 				workloadName = workload.Name
 				return
@@ -234,7 +272,7 @@ func getControllerKindName(pod *corev1.Pod) (workloadKind string, workloadName s
 	return
 }
 
-func OnUpdate(objOld interface{}, objNew interface{}) {
+func PodUpdate(objOld interface{}, objNew interface{}) {
 	oldPod := objOld.(*corev1.Pod)
 	newPod := objNew.(*corev1.Pod)
 	if oldPod.ResourceVersion == newPod.ResourceVersion {
@@ -243,13 +281,13 @@ func OnUpdate(objOld interface{}, objNew interface{}) {
 		return
 	}
 
-	oldCachePod, ok := globalPodInfo.get(oldPod.Namespace, oldPod.Name)
+	oldCachePod, ok := GlobalPodInfo.get(oldPod.Namespace, oldPod.Name)
 	if !ok {
-		onAdd(objNew)
+		PodAdd(objNew)
 		return
 	}
 	// Always override the old pod in the cache
-	onAdd(objNew)
+	PodAdd(objNew)
 
 	// Delay delete the pod using the difference between the old pod and the new one
 	deletedPodInfo := &deletedPodInfo{
@@ -279,6 +317,11 @@ func OnUpdate(objOld interface{}, objNew interface{}) {
 	containerIdCompare := compare.NewStringSlice(oldCachePod.ContainerIds, newContainerIds)
 	containerIdCompare.Compare()
 	deletedPodInfo.containerIds = containerIdCompare.GetRemovedElements()
+	if dsfEnable {
+		for _, deletedContainerIds := range deletedPodInfo.containerIds {
+			MetaDataCache.DeleteLocalDSFRuleByContainerId(deletedContainerIds)
+		}
+	}
 
 	// Check the ports specified.
 	newPorts := make([]int32, 0)
@@ -322,7 +365,7 @@ func OnUpdate(objOld interface{}, objNew interface{}) {
 	podDeleteQueueMut.Unlock()
 }
 
-func onDelete(obj interface{}) {
+func PodDelete(obj interface{}) {
 	pod := obj.(*corev1.Pod)
 	podInfo := &deletedPodInfo{
 		uid:          string(pod.UID),
@@ -342,6 +385,9 @@ func onDelete(obj interface{}) {
 		}
 		podInfo.containerIds = append(podInfo.containerIds, shortenContainerId)
 	}
+	for _, deletedContainerIds := range podInfo.containerIds {
+		MetaDataCache.DeleteLocalDSFRuleByContainerId(deletedContainerIds)
+	}
 
 	for _, container := range pod.Spec.Containers {
 		if len(container.Ports) == 0 {
@@ -356,13 +402,18 @@ func onDelete(obj interface{}) {
 			}
 		}
 	}
-	// Wait for a few seconds to remove the cache data
-	podDeleteQueueMut.Lock()
-	podDeleteQueue = append(podDeleteQueue, deleteRequest{
-		podInfo: podInfo,
-		ts:      time.Now(),
-	})
-	podDeleteQueueMut.Unlock()
+
+	if enableGraceDeletePeriod {
+		// Wait for a few seconds to remove the cache data
+		podDeleteQueueMut.Lock()
+		podDeleteQueue = append(podDeleteQueue, deleteRequest{
+			podInfo: podInfo,
+			ts:      time.Now(),
+		})
+		podDeleteQueueMut.Unlock()
+	} else {
+		deletePodInfo(podInfo)
+	}
 }
 
 // TruncateContainerId slices the input containerId into two parts separated by "://",
@@ -381,4 +432,22 @@ func TruncateContainerId(containerId string) string {
 		l = 12
 	}
 	return secondString[0:l]
+}
+
+func TruncateComplateContainerId(containerId string) string {
+	sep := "://"
+	separated := strings.SplitN(containerId, sep, 2)
+	if len(separated) < 2 {
+		return ""
+	}
+	return separated[1]
+}
+
+func getHostIpFromEnv() string {
+	value, ok := os.LookupEnv("MY_NODE_IP")
+	if !ok {
+		// return "unknow"
+		return "unknow"
+	}
+	return value
 }

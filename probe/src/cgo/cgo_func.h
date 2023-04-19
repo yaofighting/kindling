@@ -11,8 +11,6 @@ extern "C" {
 int runForGo();
 int getKindlingEvent(void** kindlingEvent);
 int getTcpPacketsEvent(void *tcpKindlingEvent, void *count);
-int getExceptionNetEvent(void *tcpKindlingEvent, void *count);
-int analyzePacketsEvent();
 int analyzePodNetTrackEvent();
 int getPodTrackEvent(void *tcpKindlingEvent, void *count);
 int updateFocusPodInfo(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op);
