@@ -30,10 +30,10 @@ struct interface_info{
 
 class tcp_analyer_base {
     unordered_map <uint32_t, uint32_t> host_map;
-
 public:
     sinsp *inspector;
     interface_info cni0;
+    unordered_map <uint32_t, uint32_t> ifindex_type_map;
 
     void init_virtual_interface_ip();
 
@@ -79,13 +79,16 @@ struct agg_tcp_ack {
 class tcp_handshake_analyzer : public tcp_analyer_base {
   unordered_map<tcp_tuple, agg_handshake_rtt_value, tcp_tuple_hash, tcp_tuple_equal>
       handshake_agg_map;
+  unordered_map<tcp_tuple, tcp_handshake_rtt, tcp_tuple_hash, tcp_tuple_equal>
+      handshake_match_map;
   unordered_map<tcp_tuple, agg_handshake_rtt_value, tcp_tuple_hash, tcp_tuple_equal>::iterator
       map_ptr;
 
  public:
+  uint64_t last_send_time;
   tcp_handshake_analyzer(sinsp* inspector);
-  void aggregate_handshake_info(tcp_handshake_buffer_elem* results, int* reslen,
-                                kindling_event_t_for_go evt[], int* evtlen);
+  int match_tcp_handshake(tcp_tuple *tp, bool SYN, bool ACK, uint64_t cur_time);
+  bool consume_tcp_handshake(sinsp_evt *ev, kindling_event_t_for_go evt[], int *evtlen, int max_len);
 };
 
 class tcp_packets_analyzer : public tcp_analyer_base {
@@ -103,17 +106,18 @@ class tcp_packets_analyzer : public tcp_analyer_base {
   */
   unordered_map<tcp_tuple, agg_tcp_ack, tcp_tuple_hash, tcp_tuple_equal> ack_delay_map;
   unordered_map<tcp_tuple, agg_tcp_ack, tcp_tuple_hash, tcp_tuple_equal>::iterator dmap_ptr;
-  unordered_map<tcp_tuple, queue<tcp_datainfo*>, tcp_tuple_hash, tcp_tuple_equal>
+  unordered_map<tcp_tuple, queue<tcp_datainfo>, tcp_tuple_hash, tcp_tuple_equal>
       ack_match_queue_map;
-  unordered_map<tcp_tuple, queue<tcp_datainfo*>, tcp_tuple_hash, tcp_tuple_equal>::iterator
+  unordered_map<tcp_tuple, queue<tcp_datainfo>, tcp_tuple_hash, tcp_tuple_equal>::iterator
       qmap_ptr;
 
  public:
+  uint64_t last_pkt_total_send_time;
+  uint64_t last_ack_delay_send_time;
   tcp_packets_analyzer(sinsp* inspector);
-  void get_total_tcp_packets(tcp_datainfo* results, int* reslen, kindling_event_t_for_go evt[],
-                             int* evtlen);
-  void get_tcp_ack_delay(tcp_datainfo* results, int* reslen, kindling_event_t_for_go evt[],
-                         int* evtlen);
+  bool get_total_tcp_packets(sinsp_evt *ev, kindling_event_t_for_go evt[], int *evtlen, int max_len);
+  int match_tcp_ack_delay(tcp_tuple *tp, uint32_t seq, uint32_t ack_seq, bool SYN, bool ACK, uint64_t cur_time);
+  bool consume_tcp_ack_delay(sinsp_evt *ev, kindling_event_t_for_go evt[], int *evtlen, int max_len);
 };
 
 #endif

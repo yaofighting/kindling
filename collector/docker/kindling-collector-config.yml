@@ -31,7 +31,7 @@ receivers:
       - name: kretprobe-tcp_connect
       - name: kprobe-tcp_set_state
       - name: tracepoint-procexit
-      - name: socket_filter
+      - name: tcp_analysis
 analyzers:
   cpuanalyzer:
     # segment_size defines how many segments(seconds) can be cached to wait for sending.

@@ -2,6 +2,10 @@
 #include "../cgo/utils.h"
 
 #define PROC_NET_ROUTE "/proc/net/route"
+/*
+  For calico network: we can get container interface(ip, ifindex) from route table.
+  For flannel+VXLAN network: we can't get container interface, so we get the cni0 interface to use. 
+*/
 void tcp_analyer_base::init_virtual_interface_ip() {
   char line[512] = {};
   FILE* fp = NULL;
@@ -35,7 +39,7 @@ void tcp_analyer_base::init_virtual_interface_ip() {
         ip = ntohl(ip);
         if (strncmp(ifname, "cni0", 4) != 0) {
           host_map[ip] = ifindex;
-        } else {
+        } else { 
           cni0.ifindex = ifindex;
           cni0.ip = ip;
           for (int i = 0; i < 6; i++) {
@@ -83,12 +87,16 @@ void tcp_analyer_base::init_host_ip() {
       continue;
 
     if (!strncmp(ifa->ifa_name, "veth", 4) || !strncmp(ifa->ifa_name, "cali", 4)) {
-      container_interface[ifcount++] = if_nametoindex(ifa->ifa_name);
+      container_interface[ifcount] = if_nametoindex(ifa->ifa_name);
+      ifindex_type_map[container_interface[ifcount]] = CONTAINER_INTERFACE;
+      ifcount++;
     }
 
     if(!strncmp(ifa->ifa_name, "en", 2) || !strncmp(ifa->ifa_name, "eth", 3))
 		{
-			physical_interface[pifcount++] = if_nametoindex(ifa->ifa_name);
+			physical_interface[pifcount] = if_nametoindex(ifa->ifa_name);
+      ifindex_type_map[physical_interface[pifcount]] = PHYSICAL_INTERFACE;
+      pifcount++;
 		}
 
     if (family == AF_INET) {
@@ -141,173 +149,274 @@ void tcp_analyer_base::init_tcp_kindling_event(kindling_event_t_for_go* p_kindli
 
 tcp_handshake_analyzer::tcp_handshake_analyzer(sinsp* inspector) {
   this->inspector = inspector;
+  last_send_time = 0;
   init_host_ip();
 }
 
-void tcp_handshake_analyzer::aggregate_handshake_info(tcp_handshake_buffer_elem* results,
-                                                      int* reslen, kindling_event_t_for_go evt[],
-                                                      int* evtlen) {
-  int evtcnt = *evtlen;
-  for (int i = 0; i < *reslen; i++) {
-    if (results[i].timestamp == 0) continue;
-    // agg_triple_key k = {results[i].tp.dport, results[i].tp.saddr, results[i].tp.daddr};
-    map_ptr = handshake_agg_map.find(results[i].tp);
-    if (map_ptr == handshake_agg_map.end()) {
-      agg_handshake_rtt_value val = {1, results[i].synrtt, results[i].ackrtt, results[i].timestamp,
-                                     results[i].timestamp};
-      handshake_agg_map[results[i].tp] = val;
-    } else {
-      map_ptr->second.data_counts++;
-      map_ptr->second.synrtt_delta += results[i].synrtt;
-      map_ptr->second.ackrtt_delta += results[i].ackrtt;
-      map_ptr->second.end_time = results[i].timestamp;
+int tcp_handshake_analyzer::match_tcp_handshake(tcp_tuple *tp, bool SYN, bool ACK, uint64_t cur_time){
+
+  unordered_map<tcp_tuple, tcp_handshake_rtt, tcp_tuple_hash, tcp_tuple_equal>::iterator hdsm_ptr;
+
+  if (SYN == 0 && ACK == 1) {
+    hdsm_ptr = handshake_match_map.find(*tp);
+    // the third handshake
+    if (hdsm_ptr != handshake_match_map.end()) {
+      hdsm_ptr->second.synrtt = hdsm_ptr->second.ackrtt - hdsm_ptr->second.synrtt;  // synrtt = second - first
+      hdsm_ptr->second.ackrtt = cur_time - hdsm_ptr->second.ackrtt;     // ackrtt = third - second
+      return 0;
+    }else {
+      printf("handshake map error, the second handshake not found.\n");
+      return -1;
     }
-  }
-  for (auto& e : handshake_agg_map) {
-    if (get_interface_by_ip(e.first.saddr) == e.first.ifindex) {
-      e.second.ackrtt_delta = -1;  // If host is a client, ackrtt is invalid
-    } else if(get_interface_by_ip(e.first.daddr) == e.first.ifindex) {
-      e.second.synrtt_delta = -1;  // If host is a server, synrtt is invalid
-    }else{
-      bool src_flag = is_ip_from_cni0_network(e.first.saddr);
-      bool dst_flag = is_ip_from_cni0_network(e.first.daddr);
-      if(src_flag && !dst_flag){
-        e.second.ackrtt_delta = -1;
-      }else if(!src_flag && dst_flag){
-        e.second.synrtt_delta = -1;
+  } else if (SYN == 1) {
+    if (ACK == 0) {  // the first handshake
+      struct tcp_handshake_rtt f_rtt = {};
+      f_rtt.synrtt = cur_time;
+      handshake_match_map[*tp] = f_rtt;
+    } else {  // the second handshake
+      tcp_tuple rtp = get_reverse_tuple(tp);
+      hdsm_ptr = handshake_match_map.find(rtp);
+      if (hdsm_ptr != handshake_match_map.end()) {
+        hdsm_ptr->second.ackrtt = cur_time;  // update to the second handshake timestamp
+      } 
+      else { // only drop if not match
+        printf("handshake map error, the first handshake not found.\n");
+        return -1;
       }
     }
-
-    // fill the kindling event
-    init_tcp_kindling_event(&evt[evtcnt]);
-    strcpy(evt[evtcnt].name, "tcp_handshake_rtt");
-    int userAttNumber = 0;
-
-    KeyValue kindling_event_params[9] = {
-        {(char*)("sip"), (char*)(&e.first.saddr), 4, UINT32},
-        {(char*)("dip"), (char*)(&e.first.daddr), 4, UINT32},
-        {(char*)("sport"), (char*)(&e.first.sport), 2, UINT16},
-        {(char*)("dport"), (char*)(&e.first.dport), 2, UINT16},
-        {(char*)("data_counts"), (char*)(&e.second.data_counts), 8, UINT64},
-        {(char*)("synrtt_delta"), (char*)(&e.second.synrtt_delta), 8, INT64},
-        {(char*)("ackrtt_delta"), (char*)(&e.second.ackrtt_delta), 8, INT64},
-        {(char*)("start_time"), (char*)(&e.second.start_time), 8, UINT64},
-        {(char*)("end_time"), (char*)(&e.second.end_time), 8, UINT64},
-    };
-    fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 9, userAttNumber);
-
-    evt[evtcnt].paramsNumber = userAttNumber;
-    evtcnt++;
   }
-  *evtlen = evtcnt;
-  handshake_agg_map.clear();
+}
+
+bool tcp_handshake_analyzer::consume_tcp_handshake(sinsp_evt* ev,
+                                                   kindling_event_t_for_go evt[],
+                                                   int* evtlen, int max_len) {
+  auto ifindex = *(uint32_t*)(ev->get_param_value_raw("ifindex")->m_val);
+  if (ifindex_type_map[ifindex] != CONTAINER_INTERFACE)
+    return false;  // only analyze packet from container interface.
+  auto tpv = ev->get_param_value_raw("tuple")->m_val;
+
+  uint16_t flag = *(uint16_t*)(ev->get_param_value_raw("flag")->m_val);
+  bool SYN = flag & (1 << 1);
+  bool ACK = flag & (1 << 4);
+  auto ev_ts = ev->get_ts();
+
+  tcp_tuple tp = {*(uint16_t*)(tpv + 5), *(uint16_t*)(tpv + 11), *(uint32_t*)(tpv + 1),
+                  *(uint32_t*)(tpv + 7), ifindex};
+
+  int evtcnt = *evtlen;
+  if (match_tcp_handshake(&tp, SYN, ACK, ev_ts) == 0) {  // finish 3 handshakes.
+    unordered_map<tcp_tuple, tcp_handshake_rtt, tcp_tuple_hash, tcp_tuple_equal>::iterator
+        hdsm_ptr = handshake_match_map.find(tp);
+
+    map_ptr = handshake_agg_map.find(tp);
+    if (map_ptr == handshake_agg_map.end()) {
+      agg_handshake_rtt_value val = {1, hdsm_ptr->second.synrtt, hdsm_ptr->second.ackrtt, ev_ts,
+                                     ev_ts};
+      handshake_agg_map[tp] = val;
+    } else {
+      map_ptr->second.data_counts++;
+      map_ptr->second.synrtt_delta += hdsm_ptr->second.synrtt;
+      map_ptr->second.ackrtt_delta += hdsm_ptr->second.ackrtt;
+      map_ptr->second.end_time = ev_ts;
+    }
+
+    handshake_match_map.erase(hdsm_ptr);
+  }
+
+  if (!last_send_time) {
+    last_send_time = ev_ts;
+  } else if (ev_ts - last_send_time >= 5e9) {  // convert to kindling_event per 5 seconds.
+    for (auto& e : handshake_agg_map) {
+      if (get_interface_by_ip(e.first.saddr) == e.first.ifindex) {
+        e.second.ackrtt_delta = -1;  // If host is a client, ackrtt is invalid
+      } else if (get_interface_by_ip(e.first.daddr) == e.first.ifindex) {
+        e.second.synrtt_delta = -1;  // If host is a server, synrtt is invalid
+      } else {
+        bool src_flag = is_ip_from_cni0_network(e.first.saddr);
+        bool dst_flag = is_ip_from_cni0_network(e.first.daddr);
+        if (src_flag && !dst_flag) {
+          e.second.ackrtt_delta = -1;
+        } else if (!src_flag && dst_flag) {
+          e.second.synrtt_delta = -1;
+        }
+      }
+
+      // fill the kindling event
+      // init_tcp_kindling_event(&evt[evtcnt]);
+      strcpy(evt[evtcnt].name, "tcp_handshake_rtt");
+      int userAttNumber = 0;
+
+      KeyValue kindling_event_params[9] = {
+          {(char*)("sip"), (char*)(&e.first.saddr), 4, UINT32},
+          {(char*)("dip"), (char*)(&e.first.daddr), 4, UINT32},
+          {(char*)("sport"), (char*)(&e.first.sport), 2, UINT16},
+          {(char*)("dport"), (char*)(&e.first.dport), 2, UINT16},
+          {(char*)("data_counts"), (char*)(&e.second.data_counts), 8, UINT64},
+          {(char*)("synrtt_delta"), (char*)(&e.second.synrtt_delta), 8, INT64},
+          {(char*)("ackrtt_delta"), (char*)(&e.second.ackrtt_delta), 8, INT64},
+          {(char*)("start_time"), (char*)(&e.second.start_time), 8, UINT64},
+          {(char*)("end_time"), (char*)(&e.second.end_time), 8, UINT64},
+      };
+      fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 9, userAttNumber);
+
+      evt[evtcnt].paramsNumber = userAttNumber;
+      evtcnt++;
+      if(evtcnt >= max_len) break;
+    }
+
+    last_send_time = ev_ts;
+
+    *evtlen = evtcnt;
+    handshake_agg_map.clear();
+    return true;
+  }
+  return false; 
 }
 
 tcp_packets_analyzer::tcp_packets_analyzer(sinsp* inspector) {
   this->inspector = inspector;
+  last_pkt_total_send_time = last_ack_delay_send_time = 0;
   init_host_ip();
 }
 
-void tcp_packets_analyzer::get_total_tcp_packets(tcp_datainfo* results, int* reslen,
-                                                 kindling_event_t_for_go evt[], int* evtlen) {
+bool tcp_packets_analyzer::get_total_tcp_packets(sinsp_evt *ev, kindling_event_t_for_go evt[], int *evtlen, int max_len) {
+  auto ifindex = *(uint32_t*)(ev->get_param_value_raw("ifindex")->m_val);
+  if (ifindex_type_map[ifindex] != CONTAINER_INTERFACE)
+    return false;  // only analyze packet from container interface.
+  auto tpv = ev->get_param_value_raw("tuple")->m_val;
+  auto ev_ts = ev->get_ts();
+
+  tcp_tuple tp = {*(uint16_t*)(tpv + 5), *(uint16_t*)(tpv + 11), *(uint32_t*)(tpv + 1),
+                  *(uint32_t*)(tpv + 7), ifindex};
+
   int evtcnt = *evtlen;
-  for (int i = 0; i < *reslen; i++) {
-    if (results[i].timestamp == 0) continue;
-    if (quadruples_total_map.find(results[i].tp) == quadruples_total_map.end()) {
-      packets_total pt = packets_total{results[i].package_counts, 0};
-      if (get_interface_by_ip(results[i].tp.saddr) == results[i].tp.ifindex ||
-        (is_ip_from_cni0_network(results[i].tp.saddr) && !is_ip_from_cni0_network(results[i].tp.daddr))) {
-        pt.direction_type = 1;
-      }
-      quadruples_total_map[results[i].tp] = pt;
-    } else {
-      quadruples_total_map[results[i].tp].total_counts =
-          quadruples_total_map[results[i].tp].total_counts > results[i].package_counts
-              ? quadruples_total_map[results[i].tp].total_counts
-              : results[i].package_counts;
+
+  if (quadruples_total_map.find(tp) == quadruples_total_map.end()) {
+    packets_total pt = packets_total{1, 0};
+    if (get_interface_by_ip(tp.saddr) == tp.ifindex ||
+        (is_ip_from_cni0_network(tp.saddr) && !is_ip_from_cni0_network(tp.daddr))) {
+      pt.direction_type = 1;
     }
+    quadruples_total_map[tp] = pt;
+  } else {
+    quadruples_total_map[tp].total_counts++;
   }
 
-  for (auto& e : quadruples_total_map) {
-    // fill the kindling event
-    init_tcp_kindling_event(&evt[evtcnt]);
-    strcpy(evt[evtcnt].name, "tcp_packet_counts");
-    int userAttNumber = 0;
+  if (!last_pkt_total_send_time) {
+    last_pkt_total_send_time = ev_ts;
+  } else if (ev_ts - last_pkt_total_send_time >= 5e9) {
+    for (auto& e : quadruples_total_map) {
+      // fill the kindling event
+      // init_tcp_kindling_event(&evt[evtcnt]);
+      strcpy(evt[evtcnt].name, "tcp_packet_counts");
+      int userAttNumber = 0;
 
-    KeyValue kindling_event_params[6] = {
-        {(char*)("sip"), (char*)(&e.first.saddr), 4, UINT32},
-        {(char*)("dip"), (char*)(&e.first.daddr), 4, UINT32},
-        {(char*)("sport"), (char*)(&e.first.sport), 2, UINT16},
-        {(char*)("dport"), (char*)(&e.first.dport), 2, UINT16},
-        {(char*)("packet_counts"), (char*)(&e.second.total_counts), 8, UINT64},
-        {(char*)("direction_type"), (char*)(&e.second.direction_type), 4, INT32},
-    };
+      KeyValue kindling_event_params[6] = {
+          {(char*)("sip"), (char*)(&e.first.saddr), 4, UINT32},
+          {(char*)("dip"), (char*)(&e.first.daddr), 4, UINT32},
+          {(char*)("sport"), (char*)(&e.first.sport), 2, UINT16},
+          {(char*)("dport"), (char*)(&e.first.dport), 2, UINT16},
+          {(char*)("packet_counts"), (char*)(&e.second.total_counts), 8, UINT64},
+          {(char*)("direction_type"), (char*)(&e.second.direction_type), 4, INT32},
+      };
 
-    fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 6, userAttNumber);
+      fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 6, userAttNumber);
 
-    evt[evtcnt].paramsNumber = userAttNumber;
-    evtcnt++;
+      evt[evtcnt].paramsNumber = userAttNumber;
+      evtcnt++;
+      if(evtcnt >= max_len) break;
+    }
+    *evtlen = evtcnt;
+    quadruples_total_map.clear();
+    last_pkt_total_send_time = ev_ts;
+    return true; //consume them successfully.
   }
-  *evtlen = evtcnt;
-  quadruples_total_map.clear();
+  return false;
 }
 
-void tcp_packets_analyzer::get_tcp_ack_delay(tcp_datainfo* results, int* reslen,
-                                             kindling_event_t_for_go evt[], int* evtlen) {
-  int i, evtcnt = *evtlen;
-  for (i = 0; i < *reslen; i++) {
-    if (get_interface_by_ip(results[i].tp.daddr) == results[i].tp.ifindex
-        || is_ip_from_cni0_network(results[i].tp.daddr)) {
-      ack_match_queue_map[results[i].tp].push(&results[i]);
-      continue;  // only calculate src(host) ---> dst
+int tcp_packets_analyzer::match_tcp_ack_delay(tcp_tuple *tp, uint32_t seq, uint32_t ack_seq, bool SYN, bool ACK, uint64_t cur_time) {
+  if(SYN == 0 && ACK == 1){
+    if (get_interface_by_ip(tp->daddr) == tp->ifindex
+        || is_ip_from_cni0_network(tp->daddr)) {
+      ack_match_queue_map[*tp].push(tcp_datainfo{*tp, seq, ack_seq, cur_time});
+      return -1;  // only calculate src(host) ---> dst
     }
 
-    tcp_tuple rtp = get_reverse_tuple(&results[i].tp);
+    tcp_tuple rtp = get_reverse_tuple(tp);
     qmap_ptr = ack_match_queue_map.find(rtp);
     if (qmap_ptr != ack_match_queue_map.end()) {
-      tcp_datainfo* cur = qmap_ptr->second.front();
-      tcp_datainfo* pre = NULL;
-      while (!qmap_ptr->second.empty() && cur->seq <= results[i].ack_seq &&
-             cur->ack_seq <= results[i].seq) {
+      tcp_datainfo cur = qmap_ptr->second.front();
+      tcp_datainfo pre;
+      bool flag = false;
+      while (!qmap_ptr->second.empty() && cur.seq <= ack_seq && cur.ack_seq <= seq) {
         pre = cur;
+        flag = true;
         qmap_ptr->second.pop();
         cur = qmap_ptr->second.front();
       }
-      if (pre) {
+      if (flag) {
         // agg_tcp_key agg_key = agg_iptuple_key{results[i].tp.saddr, results[i].tp.daddr};
-        if (ack_delay_map.find(results[i].tp) == ack_delay_map.end()) {
-          ack_delay_map.emplace(piecewise_construct, forward_as_tuple(results[i].tp),
-                                forward_as_tuple(results[i].timestamp));  // construct in place
+        if (ack_delay_map.find(*tp) == ack_delay_map.end()) {
+          ack_delay_map.emplace(piecewise_construct, forward_as_tuple(*tp),
+                                forward_as_tuple(cur_time));  // construct in place
         }
-        dmap_ptr = ack_delay_map.find(results[i].tp);
-        dmap_ptr->second.acktime_delta += results[i].timestamp - pre->timestamp;
+        dmap_ptr = ack_delay_map.find(*tp);
+        dmap_ptr->second.acktime_delta += cur_time - pre.timestamp;
         dmap_ptr->second.data_counts++;
-        dmap_ptr->second.end_time = results[i].timestamp;
+        dmap_ptr->second.end_time = cur_time;
       }
     }
   }
+  return 0;
+}
 
-  for (auto& e : ack_delay_map) {
-    init_tcp_kindling_event(&evt[evtcnt]);
-    strcpy(evt[evtcnt].name, "tcp_ack_delay");
-    int userAttNumber = 0;
+bool tcp_packets_analyzer::consume_tcp_ack_delay(sinsp_evt *ev, kindling_event_t_for_go evt[], int *evtlen, int max_len) {
+  auto ifindex = *(uint32_t*)(ev->get_param_value_raw("ifindex")->m_val);
+  if (ifindex_type_map[ifindex] != CONTAINER_INTERFACE)
+    return false;  // only analyze packet from container interface.
+  auto tpv = ev->get_param_value_raw("tuple")->m_val;
+  uint16_t flag = *(uint16_t*)(ev->get_param_value_raw("flag")->m_val);
+  bool SYN = flag & (1 << 1);
+  bool ACK = flag & (1 << 4);
+  auto seq = *(uint32_t*)(ev->get_param_value_raw("seq")->m_val);
+  auto ack_seq = *(uint32_t*)(ev->get_param_value_raw("ack_seq")->m_val);
+  auto ev_ts = ev->get_ts();
+  tcp_tuple tp = {*(uint16_t*)(tpv + 5), *(uint16_t*)(tpv + 11), *(uint32_t*)(tpv + 1),
+                  *(uint32_t*)(tpv + 7), ifindex};
 
-    KeyValue kindling_event_params[8] = {
-        {(char*)("sip"), (char*)(&e.first.saddr), 4, UINT32},
-        {(char*)("dip"), (char*)(&e.first.daddr), 4, UINT32},
-        {(char*)("sport"), (char*)(&e.first.sport), 2, UINT16},
-        {(char*)("dport"), (char*)(&e.first.dport), 2, UINT16},
-        {(char*)("data_counts"), (char*)(&e.second.data_counts), 8, UINT64},
-        {(char*)("acktime_delta"), (char*)(&e.second.acktime_delta), 8, INT64},
-        {(char*)("start_time"), (char*)(&e.second.start_time), 8, UINT64},
-        {(char*)("end_time"), (char*)(&e.second.end_time), 8, UINT64},
-    };
-    fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 8, userAttNumber);
+  int evtcnt = *evtlen;
 
-    evt[evtcnt].paramsNumber = userAttNumber;
-    evtcnt++;
+  match_tcp_ack_delay(&tp, seq, ack_seq, SYN, ACK, ev_ts);
+
+  if (!last_ack_delay_send_time) {
+    last_ack_delay_send_time = ev_ts;
+  } else if (ev_ts - last_ack_delay_send_time >= 5e9) {
+    for (auto& e : ack_delay_map) {
+      // init_tcp_kindling_event(&evt[evtcnt]);
+      strcpy(evt[evtcnt].name, "tcp_ack_delay");
+      int userAttNumber = 0;
+
+      KeyValue kindling_event_params[8] = {
+          {(char*)("sip"), (char*)(&e.first.saddr), 4, UINT32},
+          {(char*)("dip"), (char*)(&e.first.daddr), 4, UINT32},
+          {(char*)("sport"), (char*)(&e.first.sport), 2, UINT16},
+          {(char*)("dport"), (char*)(&e.first.dport), 2, UINT16},
+          {(char*)("data_counts"), (char*)(&e.second.data_counts), 8, UINT64},
+          {(char*)("acktime_delta"), (char*)(&e.second.acktime_delta), 8, INT64},
+          {(char*)("start_time"), (char*)(&e.second.start_time), 8, UINT64},
+          {(char*)("end_time"), (char*)(&e.second.end_time), 8, UINT64},
+      };
+      fill_kindling_event_param(&evt[evtcnt], kindling_event_params, 8, userAttNumber);
+
+      evt[evtcnt].paramsNumber = userAttNumber;
+      evtcnt++;
+      if(evtcnt >= max_len) break;
+    }
+    *evtlen = evtcnt;
+    ack_match_queue_map.clear();
+    ack_delay_map.clear();
+    return true;
   }
-  *evtlen = evtcnt;
-  ack_match_queue_map.clear();
-  ack_delay_map.clear();
+
+  return false;
 }

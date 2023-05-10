@@ -9,10 +9,11 @@
 extern "C" {
 #endif
 int runForGo();
-int getKindlingEvent(void** kindlingEvent);
-int getTcpPacketsEvent(void *tcpKindlingEvent, void *count);
-int analyzePodNetTrackEvent();
-int getPodTrackEvent(void *tcpKindlingEvent, void *count);
+int getKindlingEvent(void* kindlingEvent, void *count, void *maxlen);
+int initKindlingEventForGo(int number, void *kindlingEvent);
+// int getTcpPacketsEvent(void *tcpKindlingEvent, void *count);
+// int analyzePodNetTrackEvent();
+// int getPodTrackEvent(void *tcpKindlingEvent, void *count);
 int updateFocusPodInfo(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op);
 void subEventForGo(char* eventName, char* category, void* params);
 int startProfile();

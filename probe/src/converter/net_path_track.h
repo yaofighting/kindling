@@ -74,10 +74,10 @@ class net_path_track : public tcp_analyer_base {
   // void countTimeoutEvent();
   template <typename T1, typename T2, typename MAP_T>
   void clear_timeout_pod_track(uint64_t &cur_time, T1 &map_it, T2 &vec_it, MAP_T &my_map);
-  void consume_pod_track_by_seq(kindling_event_t_for_go evt[], int &evtcnt, uint32_t seq, uint64_t begin_time, uint64_t end_time);
+  void consume_pod_track_by_seq(kindling_event_t_for_go evt[], int &evtcnt, uint32_t seq, uint64_t begin_time, uint64_t end_time, int maxlen);
   // void analyze_net_track(tcp_raw_data* results, int len);
-  void analyze_pod_net_track(tcp_raw_data* results, int len);
-  void get_pod_track_event(kindling_event_t_for_go evt[],int* evt_len);
+  void analyze_pod_net_track(sinsp_evt *ev);
+  void get_pod_track_event(kindling_event_t_for_go evt[], int *evt_len, int max_len);
  private:
   unordered_map<uint32_t, vector<ip_pair> > ip_to_seq_map;
   unordered_map<uint32_t, vector<pod_track_data> > pod_track_map;
@@ -85,8 +85,10 @@ class net_path_track : public tcp_analyer_base {
   // vector<net_track_data> exception_list;
   // unordered_map<uint32_t , net_track_data> net_track_map;
   uint64_t time_out=20*1000;
-  uint64_t clear_cycle = 5e9;
+  uint64_t clear_cycle = 1e10;
   uint64_t slow_interval = 20*1000*1000;
+
+  uint64_t last_pod_track_send_time;
 };
 
 #endif  // KINDLING_PROBE_NET_PATH_TRACK_H

@@ -13,12 +13,12 @@
 
 #include "converter/cpu_converter.h"
 #include "../converter/tcp_packets_analyzer.h"
+#include "utils.h"
 
 cpu_converter* cpuConverter;
 fstream debug_file_log;
 map<uint64_t, char*> ptid_comm;
 static sinsp* inspector = nullptr;
-static tcp_analyer_base* tcb = nullptr;
 sinsp_evt_formatter* formatter = nullptr;
 bool printEvent = false;
 int cnt = 0;
@@ -44,6 +44,9 @@ char* kd_stack = new char[1024];
 char* duration_char = new char[32];
 char* span_char = new char[1024];
 net_path_track* npt;
+tcp_handshake_analyzer *hds_analyzer;
+tcp_packets_analyzer *tp_analyzer;
+bool is_start_tcp_analysis = false;
 
 int16_t event_filters[1024][16];
 
@@ -66,6 +69,11 @@ void sub_event(char* eventName, char* category, event_params_for_subscribe param
   if (it_type == m_events.end()) {
     cout << "failed to find event " << eventName << endl;
     return;
+  }
+  if(strncmp(eventName, "tcp_analysis", 12) == 0){
+    is_start_tcp_analysis = true;
+    cout << "is_start_tcp_analysis = " << is_start_tcp_analysis << endl;
+    inspector->set_eventmask(PPME_TCP_PACKET_ANALYSIS_E);
   }
   if (category == nullptr || category[0] == '\0') {
     for (int j = 0; j < 16; j++) {
@@ -102,7 +110,7 @@ void suppress_events_comm(sinsp* inspector) {
 }
 
 void set_eventmask(sinsp* inspector) {
-  inspector->clear_eventmask();
+  // inspector->clear_eventmask();
   const enum ppm_event_type enables[] = {
       // add event type (no sub_event trigger) here to collect
   };
@@ -151,16 +159,17 @@ int init_probe() {
       "(%thread.tid:%thread.vtid) %evt.dir %evt.type %evt.info";
 
   try {
-    tcb = new tcp_analyer_base();
     inspector = new sinsp();
     formatter = new sinsp_evt_formatter(inspector, output_format);
     inspector->set_hostname_and_port_resolution_mode(false);
 
     set_snaplen(inspector);
-    suppress_events_comm(inspector);
+    // suppress_events_comm(inspector);
     inspector->open("");
     set_eventmask(inspector);
     npt = new net_path_track(inspector);
+    hds_analyzer = new tcp_handshake_analyzer(inspector);
+    tp_analyzer = new tcp_packets_analyzer(inspector);
     cpuConverter = new cpu_converter(inspector);
   } catch (const exception& e) {
     fprintf(stderr, "kindling probe init err: %s", e.what());
@@ -169,30 +178,30 @@ int init_probe() {
   return 0;
 }
 
-int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
-  tcp_handshake_buffer_elem *handshake = new tcp_handshake_buffer_elem[MAX_TCP_BUFFER_LEN];
-  tcp_datainfo *data = new tcp_datainfo[MAX_TCP_BUFFER_LEN];
-  int raw_data_len;
-  *(int *)count = 0;
+// int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
+//   tcp_handshake_buffer_elem *handshake = new tcp_handshake_buffer_elem[MAX_TCP_BUFFER_LEN];
+//   tcp_datainfo *data = new tcp_datainfo[MAX_TCP_BUFFER_LEN];
+//   int raw_data_len;
+//   *(int *)count = 0;
 
-  //get tcp handshake rtt data
-  tcp_handshake_analyzer hds_analyzer(inspector);
-  tcp_packets_analyzer tp_analyzer(inspector);
-  int32_t ret = inspector->get_tcp_handshake_rtt(handshake, &raw_data_len, MAX_TCP_BUFFER_LEN);
-  if(ret == 0){
-    hds_analyzer.aggregate_handshake_info(handshake, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
-  }
-  delete []handshake;
+//   //get tcp handshake rtt data
+//   tcp_handshake_analyzer hds_analyzer(inspector);
+//   tcp_packets_analyzer tp_analyzer(inspector);
+//   int32_t ret = inspector->get_tcp_handshake_rtt(handshake, &raw_data_len, MAX_TCP_BUFFER_LEN);
+//   if(ret == 0){
+//     hds_analyzer.aggregate_handshake_info(handshake, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+//   }
+//   delete []handshake;
 
-  //get tcp packet counts
-  ret = inspector->get_tcp_datainfo(data, &raw_data_len, MAX_TCP_BUFFER_LEN);
-  if(ret == 0){
-    tp_analyzer.get_total_tcp_packets(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
-    tp_analyzer.get_tcp_ack_delay(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
-  }
-  delete []data;
-  return ret;
-}
+//   //get tcp packet counts
+//   ret = inspector->get_tcp_datainfo(data, &raw_data_len, MAX_TCP_BUFFER_LEN);
+//   if(ret == 0){
+//     tp_analyzer.get_total_tcp_packets(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+//     tp_analyzer.get_tcp_ack_delay(data, &raw_data_len, (kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+//   }
+//   delete []data;
+//   return ret;
+// }
 
 // int analyze_packets_event() {
 //   tcp_raw_data *tcp_raw = new tcp_raw_data[MAX_TCP_BUFFER_LEN];
@@ -208,24 +217,24 @@ int get_tcp_packets_event(void *tcpKindlingEvent, void *count) {
 //   return 0;
 // }
 
-int analyze_pod_net_track_event(){
-  tcp_raw_data *tcp_raw = new tcp_raw_data[MAX_TCP_BUFFER_LEN];
-  int raw_data_len;
-  int32_t ret = inspector->get_tcp_raw_data(tcp_raw, &raw_data_len, MAX_TCP_BUFFER_LEN);
-  if(ret == 0){
-    npt->analyze_pod_net_track(tcp_raw, raw_data_len);
-  }
-  delete []tcp_raw;
-  return 0;
-}
+// int analyze_pod_net_track_event(){
+//   tcp_raw_data *tcp_raw = new tcp_raw_data[MAX_TCP_BUFFER_LEN];
+//   int raw_data_len;
+//   int32_t ret = inspector->get_tcp_raw_data(tcp_raw, &raw_data_len, MAX_TCP_BUFFER_LEN);
+//   if(ret == 0){
+//     npt->analyze_pod_net_track(tcp_raw, raw_data_len);
+//   }
+//   delete []tcp_raw;
+//   return 0;
+// }
 
-int get_pod_track_event(void *tcpKindlingEvent, void *count){
-  cout<<"get_pod_track_event"<<endl;
-  *(int *)count = 0;
-  //net_path_track npt(inspector);
-  npt->get_pod_track_event((kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
-  return 0;
-}
+// int get_pod_track_event(void *tcpKindlingEvent, void *count){
+//   cout<<"get_pod_track_event"<<endl;
+//   *(int *)count = 0;
+//   //net_path_track npt(inspector);
+//   npt->get_pod_track_event((kindling_event_t_for_go*)tcpKindlingEvent, (int *)count);
+//   return 0;
+// }
 
 int update_focus_pod_info(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op){
   pod_key k1 = {src, dst}, k2 = {dst, src};
@@ -251,11 +260,28 @@ int update_focus_pod_info(uint32_t src, uint32_t dst, uint64_t begin_time, uint6
 //   return 0;
 // }
 
-int getEvent(void** pp_kindling_event) {
+int init_kindling_event_for_go(int number, void *kindlingEvent){
+  init_kindling_event((kindling_event_t_for_go*)kindlingEvent, number);
+}
+int c1 = 0, c2 = 0, c3 = 0;
+int getEvent(kindling_event_t_for_go evts[], int* event_count, int *max_len) {
+
   int32_t res;
   sinsp_evt* ev;
   res = inspector->next(&ev);
 
+
+  if (res == SCAP_TIMEOUT) {
+    c1++;
+    return -1;
+  } else if (res != SCAP_SUCCESS) {
+    c2++;
+    return -1;
+  }else{
+    c3++;
+    cout << "evt_type = " << get_event_type(ev->get_type()) << "c1,c2,c3 = " << c1 <<" " <<c2 <<" " << c3 << endl;
+    return 1;
+  }
   ppm_event_category category;
   int result = is_normal_event(res, ev, &category);
   if (result == -1) {
@@ -280,6 +306,7 @@ int getEvent(void** pp_kindling_event) {
       attach.join();
     }
   }
+
   uint16_t kindling_category = get_kindling_category(ev);
   uint16_t ev_type = ev->get_type();
 
@@ -288,11 +315,48 @@ int getEvent(void** pp_kindling_event) {
       threadInfo->m_pid == debug_pid) {
     print_profile_debug_info(ev);
   }
-  kindling_event_t_for_go* p_kindling_event;
-  init_kindling_event(p_kindling_event, pp_kindling_event);
+  // kindling_event_t_for_go* p_kindling_event;
+  kindling_event_t_for_go* p_kindling_event = &evts[*event_count];
+  // init_kindling_event(p_kindling_event, pp_kindling_event);
+
+
+  cout << "evt_type = " << get_event_type(ev_type) << endl;
+  if(is_start_tcp_analysis && ev_type == PPME_TCP_PACKET_ANALYSIS_E){
+    cout << "enter PPME_TCP_PACKET_ANALYSIS_E ..." << endl;
+    auto tp = ev->get_param_value_raw("tuple")->m_val;
+    auto ifindex = ev->get_param_value_raw("ifindex")->m_val;
+    uint16_t flag = *(uint16_t*)(ev->get_param_value_raw("flag")->m_val);
+    bool SYN = flag & (1 << 1);
+    bool ACK = flag & (1 << 4);
+    auto seq = ev->get_param_value_raw("seq")->m_val;
+    auto ack_seq = ev->get_param_value_raw("ack_seq")->m_val;
+    printf(
+        "get PPME_TCP_PACKET_ANALYSIS_E event. src = %u, dst = %u, sport = %u, dport = %u, ifindex "
+        "= %d, SYN = %d, ACK = %d, seq = %u, ack_seq = %u, time = %llu\n",
+        *(uint32_t*)(tp + 1), *(uint16_t*)(tp + 5), *(uint32_t*)(tp + 7), *(uint16_t*)(tp + 11),
+        *(uint32_t*)ifindex, SYN, ACK, *(uint32_t*)seq, *(uint32_t*)ack_seq, ev->get_ts());
+
+    // consume handshake data
+    // bool ret = hds_analyzer->consume_tcp_handshake(ev, p_kindling_event, event_count, *max_len);
+    // printf("consume_tcp_handshake...event_count = %d, ret = %d\n", event_count, ret);
+
+    // bool ret = tp_analyzer->get_total_tcp_packets(ev, p_kindling_event, event_count, *max_len);
+    // printf("get_total_tcp_packets...event_count = %d, ret = %d\n", event_count, ret);
+
+    // tp_analyzer->consume_tcp_ack_delay(ev, p_kindling_event, event_count, *max_len);
+    // printf("consume_tcp_ack_delay...event_count = %d, ret = %d\n", event_count, ret);
+
+    // npt->analyze_pod_net_track(ev);
+    // printf("analyze_pod_net_track...event_count = %d, ret = %d\n", event_count, ret);
+
+    // npt->get_pod_track_event(p_kindling_event, event_count, *max_len);
+    // printf("get_pod_track_event...event_count = %d, ret = %d\n", event_count, ret);
+
+    return 1;
+  }
 
   sinsp_fdinfo_t* fdInfo = ev->get_fd_info();
-  p_kindling_event = (kindling_event_t_for_go*)*pp_kindling_event;
+  // p_kindling_event = (kindling_event_t_for_go*)*pp_kindling_event;
   uint16_t userAttNumber = 0;
   uint16_t source = get_kindling_source(ev->get_type());
   if (is_start_profile) {
@@ -311,14 +375,17 @@ int getEvent(void** pp_kindling_event) {
       char* data_val = data_param->m_val;
       if (data_param->m_len > 6 && memcmp(data_val, "kd-jf@", 6) == 0) {
         parse_jf(data_val, *data_param, p_kindling_event, threadInfo, userAttNumber);
+        (*event_count)++;
         return 1;
       }
       if (data_param->m_len > 8 && memcmp(data_val, "kd-txid@", 8) == 0) {
         parse_xtid(ev, data_val, *data_param, p_kindling_event, threadInfo, userAttNumber);
+        (*event_count)++;
         return 1;
       }
       if (data_param->m_len > 8 && memcmp(data_val, "kd-span@", 8) == 0) {
         parse_span(ev, data_val, *data_param, p_kindling_event, threadInfo, userAttNumber);
+        (*event_count)++;
         return 1;
       }
       if (data_param->m_len > 6 && memcmp(data_val, "kd-tm@", 6) == 0) {
@@ -340,7 +407,9 @@ int getEvent(void** pp_kindling_event) {
     }
 
     strcpy(p_kindling_event->context.tinfo.comm, tmp_comm);
-    return cpuConverter->convert(p_kindling_event, ev, qls, is_profile_debug, debug_pid, debug_tid);
+    int ret = cpuConverter->convert(p_kindling_event, ev, qls, is_profile_debug, debug_pid, debug_tid);
+    (*event_count)++;
+    return ret;
   }
 
   if (event_filters[ev_type][kindling_category] == 0) {
@@ -491,6 +560,8 @@ int getEvent(void** pp_kindling_event) {
   }
   strcpy(p_kindling_event->context.tinfo.comm, tmp_comm);
   strcpy(p_kindling_event->context.tinfo.containerId, (char*)threadInfo->m_container_id.data());
+
+  (*event_count)++;
   return 1;
 }
 
@@ -718,11 +789,10 @@ void parse_tm(char* data_val, sinsp_evt_param data_param, sinsp_threadinfo* thre
   }
 }
 
-void init_kindling_event(kindling_event_t_for_go* p_kindling_event, void** pp_kindling_event) {
-  if (nullptr == *pp_kindling_event) {
-    *pp_kindling_event = (kindling_event_t_for_go*)malloc(sizeof(kindling_event_t_for_go));
-    p_kindling_event = (kindling_event_t_for_go*)*pp_kindling_event;
-
+void init_kindling_event(kindling_event_t_for_go evts[], int number) {
+  //initialize for kindling event
+  for(int i = 0;i<min(100,number);i++){
+    kindling_event_t_for_go* p_kindling_event = &evts[i];
     p_kindling_event->name = (char*)malloc(sizeof(char) * 1024);
     p_kindling_event->context.tinfo.comm = (char*)malloc(sizeof(char) * 256);
     p_kindling_event->context.tinfo.containerId = (char*)malloc(sizeof(char) * 256);
@@ -730,6 +800,16 @@ void init_kindling_event(kindling_event_t_for_go* p_kindling_event, void** pp_ki
     p_kindling_event->context.fdInfo.directory = (char*)malloc(sizeof(char) * 1024);
 
     for (int i = 0; i < 16; i++) {
+      p_kindling_event->userAttributes[i].key = (char*)malloc(sizeof(char) * 128);
+      p_kindling_event->userAttributes[i].value = (char*)malloc(sizeof(char) * EVENT_DATA_SIZE);
+    }
+  }
+  //initialize for tcp packet event
+  for(int i = min(100,number);i<number;i++){
+    kindling_event_t_for_go* p_kindling_event = &evts[i];
+    p_kindling_event->name = (char*)malloc(sizeof(char) * 64);
+
+    for (int i = 0; i < 10; i++) {
       p_kindling_event->userAttributes[i].key = (char*)malloc(sizeof(char) * 128);
       p_kindling_event->userAttributes[i].value = (char*)malloc(sizeof(char) * EVENT_DATA_SIZE);
     }

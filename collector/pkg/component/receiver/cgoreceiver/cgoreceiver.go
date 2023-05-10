@@ -70,13 +70,14 @@ func (r *CgoReceiver) Start() error {
 	go r.catchSignalUp()
 	time.Sleep(2 * time.Second)
 	r.telemetry.Logger.Info("Start GetNetworkPkg")
-	go r.GetNetworkPkg()
+	// go r.GetNetworkPkg()
 	_ = r.subEvent()
 	// Wait for the C routine running
 	time.Sleep(2 * time.Second)
 	go r.consumeEvents()
-	go r.startGetTcpPacketsEvent(10 * time.Second)
-	go r.startGetEvent()
+	// go r.startGetTcpPacketsEvent(10 * time.Second)
+	// /go r.startGetEvent()
+	go r.GetKindlingEvents()
 	return nil
 }
 
@@ -92,80 +93,103 @@ func ipToInt(ipStr string) (uint32, error) {
 	return uint32(ip[0])<<24 + uint32(ip[1])<<16 + uint32(ip[2])<<8 + uint32(ip[3]), nil
 }
 
-func (r *CgoReceiver) GetNetworkPkg() {
-	ticker := time.NewTicker(time.Second * 2)
+// func (r *CgoReceiver) GetNetworkPkg() {
+// 	ticker := time.NewTicker(time.Second * 2)
+// 	var count int = 0
+// 	npKindlingEvent := make([]CKindlingEventForGo, 65535)
+// 	for {
+// 		select {
+// 		case <-ticker.C:
+// 			res := int(C.getPodTrackEvent((unsafe.Pointer)(&npKindlingEvent[0]), (unsafe.Pointer)(&count)))
+// 			fmt.Println(res)
+// 			if res == 0 {
+// 				for i := 0; i < count; i++ {
+// 					event := convertEvent((*CKindlingEventForGo)(&npKindlingEvent[i]))
+// 					r.eventChannel <- event
+// 					r.stats.add(event.Name, 1)
+// 				}
+// 			}
+// 			C.analyzePodNetTrackEvent()
+// 			r.telemetry.Logger.Info("total_number_of_timeout_event: ", zap.Int("num", count))
+// 		}
+// 	}
+// }
+
+// func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
+// 	var socketFilterEnabled bool = false
+// 	for _, value := range r.cfg.SubscribeInfo {
+// 		if value.Name == "socket_filter" {
+// 			socketFilterEnabled = true
+// 			break
+// 		}
+// 	}
+
+// 	if !socketFilterEnabled {
+// 		return
+// 	}
+
+// 	tcpKindlingEvent := make([]CKindlingEventForGo, 65535)
+// 	var count int = 0
+// 	// var pKindlingEvent unsafe.Pointer
+// 	r.shutdownWG.Add(1)
+// 	for {
+// 		select {
+// 		case <-r.stopCh:
+// 			r.shutdownWG.Done()
+// 			return
+// 		case <-time.After(interval):
+// 			res := int(C.getTcpPacketsEvent((unsafe.Pointer)(&tcpKindlingEvent[0]), (unsafe.Pointer)(&count)))
+// 			if res == 0 {
+// 				for i := 0; i < count; i++ {
+// 					event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent[i]))
+// 					r.eventChannel <- event
+// 					r.stats.add(event.Name, 1)
+// 				}
+// 			}
+// 			count = 0
+// 		}
+// 	}
+// }
+
+// func (r *CgoReceiver) startGetEvent() {
+// 	var pKindlingEvent unsafe.Pointer
+// 	r.shutdownWG.Add(1)
+// 	for {
+// 		select {
+// 		case <-r.stopCh:
+// 			r.shutdownWG.Done()
+// 			return
+// 		default:
+// 			res := int(C.getKindlingEvent(&pKindlingEvent))
+// 			if res == 1 {
+// 				event := convertEvent((*CKindlingEventForGo)(pKindlingEvent))
+// 				r.eventChannel <- event
+// 				r.stats.add(event.Name, 1)
+// 			}
+// 		}
+// 	}
+// }
+
+func (r *CgoReceiver) GetKindlingEvents() {
+	r.telemetry.Logger.Info("enter GetKindlingEvents()...")
 	var count int = 0
-	npKindlingEvent := make([]CKindlingEventForGo, 65535)
+	var maxlen int = 1
+	npKindlingEvent := make([]CKindlingEventForGo, maxlen)
+	C.initKindlingEventForGo(C.int(maxlen), (unsafe.Pointer)(&npKindlingEvent[0]))
+	r.telemetry.Logger.Info("initKindlingEventForGo")
 	for {
-		select {
-		case <-ticker.C:
-			res := int(C.getPodTrackEvent((unsafe.Pointer)(&npKindlingEvent[0]), (unsafe.Pointer)(&count)))
-			fmt.Println(res)
-			if res == 0 {
-				for i := 0; i < count; i++ {
-					event := convertEvent((*CKindlingEventForGo)(&npKindlingEvent[i]))
-					r.eventChannel <- event
-					r.stats.add(event.Name, 1)
-				}
-			}
-			C.analyzePodNetTrackEvent()
-			r.telemetry.Logger.Info("total_number_of_timeout_event: ", zap.Int("num", count))
-		}
-	}
-}
-
-func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
-	var socketFilterEnabled bool = false
-	for _, value := range r.cfg.SubscribeInfo {
-		if value.Name == "socket_filter" {
-			socketFilterEnabled = true
-			break
-		}
-	}
-
-	if !socketFilterEnabled {
-		return
-	}
-
-	tcpKindlingEvent := make([]CKindlingEventForGo, 65535)
-	var count int = 0
-	// var pKindlingEvent unsafe.Pointer
-	r.shutdownWG.Add(1)
-	for {
-		select {
-		case <-r.stopCh:
-			r.shutdownWG.Done()
-			return
-		case <-time.After(interval):
-			res := int(C.getTcpPacketsEvent((unsafe.Pointer)(&tcpKindlingEvent[0]), (unsafe.Pointer)(&count)))
-			if res == 0 {
-				for i := 0; i < count; i++ {
-					event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent[i]))
-					r.eventChannel <- event
-					r.stats.add(event.Name, 1)
-				}
-			}
-			count = 0
-		}
-	}
-}
-
-func (r *CgoReceiver) startGetEvent() {
-	var pKindlingEvent unsafe.Pointer
-	r.shutdownWG.Add(1)
-	for {
-		select {
-		case <-r.stopCh:
-			r.shutdownWG.Done()
-			return
-		default:
-			res := int(C.getKindlingEvent(&pKindlingEvent))
-			if res == 1 {
-				event := convertEvent((*CKindlingEventForGo)(pKindlingEvent))
+		res := int(C.getKindlingEvent((unsafe.Pointer)(&npKindlingEvent[0]), (unsafe.Pointer)(&count), (unsafe.Pointer)(&maxlen)))
+		if res == 1 {
+			for i := 0; i < count; i++ {
+				event := convertEvent((*CKindlingEventForGo)(&npKindlingEvent[i]))
 				r.eventChannel <- event
 				r.stats.add(event.Name, 1)
 			}
+			r.telemetry.Logger.Info("total_number_of_kindling_events: ", zap.Int("num", count))
+		} else {
+			r.telemetry.Logger.Info("get_kindling_events error: ", zap.Int("num", res))
 		}
+		count = 0
 	}
 }
 
