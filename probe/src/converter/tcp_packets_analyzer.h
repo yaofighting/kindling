@@ -32,10 +32,13 @@ struct interface_info{
 
 class tcp_analyer_base {
     unordered_map <uint32_t, uint32_t> host_map;
+    unordered_map<string, int> focus_container_interface_by_user;
 public:
     sinsp *inspector;
     interface_info cni0;
     unordered_map <uint32_t, uint32_t> ifindex_type_map;
+
+    void add_focus_container_interface_by_user(string name);
 
     void init_virtual_interface_ip();
 

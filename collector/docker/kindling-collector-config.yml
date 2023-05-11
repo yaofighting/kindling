@@ -32,6 +32,9 @@ receivers:
       - name: kprobe-tcp_set_state
       - name: tracepoint-procexit
       - name: tcp_analysis
+        params: #container interface(veth pair)
+          container_interface_prefix_1: "veth"
+          container_interface_prefix_2: "cali"
 analyzers:
   cpuanalyzer:
     # segment_size defines how many segments(seconds) can be cached to wait for sending.

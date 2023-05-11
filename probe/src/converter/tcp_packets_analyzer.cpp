@@ -2,6 +2,10 @@
 #include "../cgo/utils.h"
 
 #define PROC_NET_ROUTE "/proc/net/route"
+
+void tcp_analyer_base::add_focus_container_interface_by_user(string name){
+  focus_container_interface_by_user[name] = 1;
+}
 /*
   For calico network: we can get container interface(ip, ifindex) from route table.
   For flannel+VXLAN network: we can't get container interface, so we get the cni0 interface to use. 
@@ -27,7 +31,7 @@ void tcp_analyer_base::init_virtual_interface_ip() {
     // interface
     token = strtok_r(line, delimiters, &scratch);
     if (token && (strncmp(token, "veth", 4) == 0 || strncmp(token, "cali", 4) == 0 ||
-                  strncmp(token, "cni0", 4) == 0)) {
+                  strncmp(token, "cni0", 4) == 0) || focus_container_interface_by_user[token] == 1) {
       uint32_t ifindex = if_nametoindex(token);
       char ifname[30];
       strncpy(ifname, token, 20);
@@ -87,7 +91,7 @@ void tcp_analyer_base::init_host_ip() {
     if (!strcmp(ifa->ifa_name, "lo"))  // filter out localhost/127.0.0.1
       continue;
 
-    if (!strncmp(ifa->ifa_name, "veth", 4) || !strncmp(ifa->ifa_name, "cali", 4)) {
+    if (!strncmp(ifa->ifa_name, "veth", 4) || !strncmp(ifa->ifa_name, "cali", 4) || focus_container_interface_by_user[ifa->ifa_name] == 1) {
       container_interface[ifcount] = if_nametoindex(ifa->ifa_name);
       ifindex_type_map[container_interface[ifcount]] = CONTAINER_INTERFACE;
       ifcount++;

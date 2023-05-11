@@ -268,6 +268,11 @@ func (r *CgoReceiver) subEvent() error {
 		//to do. analyze params filed in the value
 		paramsList := make([]CEventParamsForSubscribe, 0)
 		var temp CEventParamsForSubscribe
+		for name, value := range value.Params {
+			temp.name = C.CString(name)
+			temp.value = C.CString(value)
+			paramsList = append(paramsList, temp)
+		}
 		temp.name = C.CString("terminator")
 		paramsList = append(paramsList, temp)
 		C.subEventForGo(C.CString(value.Name), C.CString(value.Category), (unsafe.Pointer)(&paramsList[0]))

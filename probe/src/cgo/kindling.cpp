@@ -77,6 +77,13 @@ void sub_event(char* eventName, char* category, event_params_for_subscribe param
   if(strncmp(eventName, "tcp_analysis", 12) == 0){
     is_start_tcp_analysis = true;
     inspector->set_eventmask(PPME_TCP_PACKET_ANALYSIS_E);
+    for(int i = 0; strncmp(params[i].name, "terminator", 10) != 0;i++){
+      if(strncmp(params[i].name, "container_interface_prefix", 26) == 0){
+        hds_analyzer->add_focus_container_interface_by_user(params[i].value);
+        tp_analyzer->add_focus_container_interface_by_user(params[i].value);
+        cout << "add container_interface_prefix = " << params[i].value << endl;
+      }
+    }
   }
   if (category == nullptr || category[0] == '\0') {
     for (int j = 0; j < 16; j++) {
