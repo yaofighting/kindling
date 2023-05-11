@@ -24,7 +24,7 @@ void stop_perf();
 
 void exipre_window_cache();
 
-int get_tcp_packets_event(void *tcpKindlingEvent, void *count);
+int get_tcp_packets_event(void *tcpKindlingEvent, void *count, void *maxlen);
 
 //int analyze_packets_event();
 //
@@ -32,7 +32,7 @@ int get_tcp_packets_event(void *tcpKindlingEvent, void *count);
 
 int analyze_pod_net_track_event();
 
-int get_pod_track_event(void *tcpKindlingEvent, void *count);
+int get_pod_track_event(void *tcpKindlingEvent, void *count, void *maxlen);
 
 int update_focus_pod_info(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op);
 
@@ -127,6 +127,9 @@ void parse_span(sinsp_evt *s_evt, char *data_val, sinsp_evt_param data_param,
 void parse_tm(char* data_val, sinsp_evt_param data_param, sinsp_threadinfo* threadInfo);
 
 void init_kindling_event(kindling_event_t_for_go* p_kindling_event, void** pp_kindling_event);
+
+void init_tcp_kindling_event(kindling_event_t_for_go evts[], int number);
+int init_tcp_kindling_event_for_go(void **kindlingEvent);
 
 void print_event(sinsp_evt* s_evt);
 
@@ -445,7 +448,7 @@ const static event kindling_to_sysdig[PPM_EVENT_MAX] = {
     {"tracepoint-tcp_receive_reset", PPME_TCP_RECEIVE_RESET_E},
     {"tracepoint-cpu_analysis", PPME_CPU_ANALYSIS_E},
     {"tracepoint-procexit", PPME_PROCEXIT_1_E},
-    {"socket_filter", PPME_TCP_PACKAGE_ANALYSIS_E},
+    {"tcp_analysis", PPME_TCP_PACKET_ANALYSIS_E},
 };
 
 struct event_category {

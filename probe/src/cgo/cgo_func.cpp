@@ -9,8 +9,8 @@
 int runForGo() { return init_probe(); }
 
 int getKindlingEvent(void** kindlingEvent) { return getEvent(kindlingEvent); }
-int getTcpPacketsEvent(void *tcpKindlingEvent, void *count) {
-  return get_tcp_packets_event(tcpKindlingEvent, count);
+int getTcpPacketsEvent(void *tcpKindlingEvent, void *count, void *maxlen) {
+  return get_tcp_packets_event(tcpKindlingEvent, count, maxlen);
 }
 
 //int getExceptionNetEvent(void *tcpKindlingEvent, void *count) {
@@ -19,8 +19,11 @@ int getTcpPacketsEvent(void *tcpKindlingEvent, void *count) {
 //int analyzePacketsEvent() { return analyze_packets_event(); }
 
 int analyzePodNetTrackEvent() { return analyze_pod_net_track_event();}
-int getPodTrackEvent(void *tcpKindlingEvent, void *count) {
-  return get_pod_track_event(tcpKindlingEvent, count);
+int getPodTrackEvent(void *tcpKindlingEvent, void *count, void *maxlen) {
+  return get_pod_track_event(tcpKindlingEvent, count, maxlen);
+}
+int initTcpKindlingEventForGo(void **kindlingEvent){
+  init_tcp_kindling_event_for_go(kindlingEvent);
 }
 int updateFocusPodInfo(uint32_t src, uint32_t dst, uint64_t begin_time, uint64_t end_time, int op){
   return update_focus_pod_info(src, dst, begin_time, end_time, op);

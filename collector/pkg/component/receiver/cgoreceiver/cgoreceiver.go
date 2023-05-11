@@ -75,7 +75,7 @@ func (r *CgoReceiver) Start() error {
 	// Wait for the C routine running
 	time.Sleep(2 * time.Second)
 	go r.consumeEvents()
-	go r.startGetTcpPacketsEvent(10 * time.Second)
+	go r.startGetTcpPacketsEvent(5 * time.Second)
 	go r.startGetEvent()
 	return nil
 }
@@ -95,11 +95,12 @@ func ipToInt(ipStr string) (uint32, error) {
 func (r *CgoReceiver) GetNetworkPkg() {
 	ticker := time.NewTicker(time.Second * 2)
 	var count int = 0
-	npKindlingEvent := make([]CKindlingEventForGo, 65535)
+	var maxlen int = 65535
+	npKindlingEvent := make([]CKindlingEventForGo, maxlen)
 	for {
 		select {
 		case <-ticker.C:
-			res := int(C.getPodTrackEvent((unsafe.Pointer)(&npKindlingEvent[0]), (unsafe.Pointer)(&count)))
+			res := int(C.getPodTrackEvent((unsafe.Pointer)(&npKindlingEvent[0]), (unsafe.Pointer)(&count), (unsafe.Pointer)(&maxlen)))
 			fmt.Println(res)
 			if res == 0 {
 				for i := 0; i < count; i++ {
@@ -115,20 +116,23 @@ func (r *CgoReceiver) GetNetworkPkg() {
 }
 
 func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
-	var socketFilterEnabled bool = false
+	var tcpAnlysisEnabled bool = false
 	for _, value := range r.cfg.SubscribeInfo {
-		if value.Name == "socket_filter" {
-			socketFilterEnabled = true
+		if value.Name == "tcp_analysis" {
+			tcpAnlysisEnabled = true
 			break
 		}
 	}
 
-	if !socketFilterEnabled {
+	if !tcpAnlysisEnabled {
 		return
 	}
 
-	tcpKindlingEvent := make([]CKindlingEventForGo, 65535)
 	var count int = 0
+	var maxlen int = 65535
+	// tcpKindlingEvent := make([]CKindlingEventForGo, maxlen)
+	var tcpKindlingEvent unsafe.Pointer
+	C.initTcpKindlingEventForGo(&tcpKindlingEvent)
 	// var pKindlingEvent unsafe.Pointer
 	r.shutdownWG.Add(1)
 	for {
@@ -137,10 +141,12 @@ func (r *CgoReceiver) startGetTcpPacketsEvent(interval time.Duration) {
 			r.shutdownWG.Done()
 			return
 		case <-time.After(interval):
-			res := int(C.getTcpPacketsEvent((unsafe.Pointer)(&tcpKindlingEvent[0]), (unsafe.Pointer)(&count)))
+			res := int(C.getTcpPacketsEvent((unsafe.Pointer)(tcpKindlingEvent), (unsafe.Pointer)(&count), (unsafe.Pointer)(&maxlen)))
 			if res == 0 {
 				for i := 0; i < count; i++ {
-					event := convertEvent((*CKindlingEventForGo)(&tcpKindlingEvent[i]))
+					event := convertEvent((*CKindlingEventForGo)(unsafe.Pointer(uintptr(unsafe.Pointer(tcpKindlingEvent)) + uintptr(C.sizeof_struct_kindling_event_t_for_go*C.int(i)))))
+					// evt := ([]CKindlingEventForGo)(tcpKindlingEvent)
+					// event := convertEvent(evt[i])
 					r.eventChannel <- event
 					r.stats.add(event.Name, 1)
 				}

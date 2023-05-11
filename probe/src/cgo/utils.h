@@ -5,4 +5,10 @@
 
 void fill_kindling_event_param(kindling_event_t_for_go* p_kindling_event, KeyValue raw_params[],
                                int raw_param_len, int& userAttNumber);
+
+//
+// Get the string representation of a ppm_event_type
+//
+std::string get_event_type(uint16_t type);
+
 #endif

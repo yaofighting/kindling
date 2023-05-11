@@ -125,28 +125,29 @@ net_path_track::net_path_track(sinsp* inspector){
       cni0(Service ---> pod)
       veth(Service ---> pod)
 */
-void net_path_track::analyze_pod_net_track(tcp_raw_data* results, int len){
-
-  for(int i = 0; i < len; i++){
-    if(results[i].tp.sport == 53 || results[i].tp.dport == 53
-    || (is_ip_from_cni0_network(results[i].tp.saddr) && is_ip_from_cni0_network(results[i].tp.daddr))
-    || (focus_pod_ip.find(results[i].tp.saddr) == focus_pod_ip.end() && focus_pod_ip.find(results[i].tp.daddr) == focus_pod_ip.end())){
-      continue;
+void net_path_track::analyze_pod_net_track(tcp_raw_data raw_data[], int head, int tail) {
+  for (int i = head; i != tail; i = (i + 1) % MAX_TCP_BUFFER) {
+    if (raw_data[i].tp.sport == 53 || raw_data[i].tp.dport == 53 ||
+        (is_ip_from_cni0_network(raw_data[i].tp.saddr) &&
+         is_ip_from_cni0_network(raw_data[i].tp.daddr)) ||
+        (focus_pod_ip.find(raw_data[i].tp.saddr) == focus_pod_ip.end() &&
+         focus_pod_ip.find(raw_data[i].tp.daddr) == focus_pod_ip.end())) {
+      return;
     }
-//    cout<<"ts:"<<results[i].timestamp<<endl;
-//    printf("push into ip_to_seq_map... saddr = %u, daddr = %u, seq = %u\n", results[i].tp.saddr, results[i].tp.daddr, results[i].seq);
-    ip_to_seq_map[results[i].tp.daddr].emplace_back(results[i].tp.saddr, results[i].seq, results[i].timestamp);
-    ip_to_seq_map[results[i].tp.saddr].emplace_back(results[i].tp.daddr, results[i].seq, results[i].timestamp);
-    pod_track_data ptd =  pod_track_data(results[i].tp, results[i].seq, results[i].timestamp);
-    pod_track_map[results[i].seq].emplace_back(ptd);
+    //    cout<<"ts:"<<ev_ts<<endl;
+    //    printf("push into ip_to_seq_map... saddr = %u, daddr = %u, seq = %u\n", tp.saddr,
+    //    tp.daddr, seq);
+    ip_to_seq_map[raw_data[i].tp.daddr].emplace_back(raw_data[i].tp.saddr, raw_data[i].seq, raw_data[i].timestamp);
+    ip_to_seq_map[raw_data[i].tp.saddr].emplace_back(raw_data[i].tp.daddr, raw_data[i].seq, raw_data[i].timestamp);
+    pod_track_data ptd = pod_track_data(raw_data[i].tp, raw_data[i].seq, raw_data[i].timestamp);
+    pod_track_map[raw_data[i].seq].emplace_back(ptd);
   }
-
 }
 
-void net_path_track::consume_pod_track_by_seq(kindling_event_t_for_go evt[], int &evtcnt, uint32_t seq, uint64_t begin_time, uint64_t end_time){
+void net_path_track::consume_pod_track_by_seq(kindling_event_t_for_go evt[], int &evtcnt, uint32_t seq, uint64_t begin_time, uint64_t end_time, int maxlen){
   for(auto &event: pod_track_map[seq]){
     if(!(event.timestamp >= begin_time && event.timestamp <= end_time)) continue;
-    init_tcp_kindling_event(&evt[evtcnt]);
+    // init_tcp_kindling_event(&evt[evtcnt]);
     strcpy(evt[evtcnt].name, "pod_net_track");
     int userAttNumber = 0;
     KeyValue kindling_event_params[7] = {
@@ -164,6 +165,7 @@ void net_path_track::consume_pod_track_by_seq(kindling_event_t_for_go evt[], int
 //    printf("consume_pod_track_by_seq...sip = %u, dip = %u, sport = %d, dport =%d, ifindex = %d, seq = %u, timestamp = %llu\n",
 //      event.tp.saddr, event.tp.daddr, event.tp.sport, event.tp.dport, event.tp.ifindex, event.seq, event.timestamp);
     pod_track_map.erase(seq);
+    if(evtcnt >= maxlen) return;
   }
 }
 
@@ -185,21 +187,24 @@ void net_path_track::clear_timeout_pod_track(uint64_t &cur_time, T1 &map_it, T2 
   }
 }
 
-void net_path_track::get_pod_track_event(kindling_event_t_for_go evt[], int* evt_len) {
+void net_path_track::get_pod_track_event(kindling_event_t_for_go evt[], int* evt_len, int max_len) {
   int evtcnt = *evt_len;
-  for(auto &pod_pair: focus_pod_map){
-    for(auto &focus_seq: ip_to_seq_map[pod_pair.first.saddr]){
-      consume_pod_track_by_seq(evt, evtcnt, focus_seq.seq, pod_pair.second.begin_time, pod_pair.second.end_time);
+
+  chrono::nanoseconds ns = std::chrono::duration_cast<std::chrono::nanoseconds>(
+      std::chrono::system_clock::now().time_since_epoch());
+  uint64_t cur_time = ns.count();
+
+  for (auto& pod_pair : focus_pod_map) {
+    for (auto& focus_seq : ip_to_seq_map[pod_pair.first.saddr]) {
+      consume_pod_track_by_seq(evt, evtcnt, focus_seq.seq, pod_pair.second.begin_time,
+                               pod_pair.second.end_time, max_len);
     }
-    for(auto &focus_seq: ip_to_seq_map[pod_pair.first.daddr]){
-      consume_pod_track_by_seq(evt, evtcnt, focus_seq.seq, pod_pair.second.begin_time, pod_pair.second.end_time);
+    for (auto& focus_seq : ip_to_seq_map[pod_pair.first.daddr]) {
+      consume_pod_track_by_seq(evt, evtcnt, focus_seq.seq, pod_pair.second.begin_time,
+                               pod_pair.second.end_time, max_len);
     }
   }
-  chrono::nanoseconds ns = std::chrono::duration_cast< std::chrono::nanoseconds>(
-      std::chrono::system_clock::now().time_since_epoch()
-  );
-  uint64_t cur_time = ns.count();
-  //clear timeout event from map
+  // clear timeout event from map
   unordered_map<uint32_t, vector<pod_track_data> >::iterator pt_it = pod_track_map.begin();
   unordered_map<uint32_t, vector<ip_pair> >::iterator itsm_it = ip_to_seq_map.begin();
   vector<pod_track_data>::iterator vec_it1;
@@ -207,19 +212,19 @@ void net_path_track::get_pod_track_event(kindling_event_t_for_go evt[], int* evt
   clear_timeout_pod_track(cur_time, pt_it, vec_it1, pod_track_map);
   clear_timeout_pod_track(cur_time, itsm_it, vec_it2, ip_to_seq_map);
 
-  //clear timeout pods from focus map
-  unordered_map<pod_key, pod_value, pod_key_hash, pod_key_equal>::iterator it = focus_pod_map.begin();
-  while(it != focus_pod_map.end()){
-    if(cur_time > it->second.end_time){
+  // clear timeout pods from focus map
+  unordered_map<pod_key, pod_value, pod_key_hash, pod_key_equal>::iterator it =
+      focus_pod_map.begin();
+  while (it != focus_pod_map.end()) {
+    if (cur_time > it->second.end_time) {
       focus_pod_ip[it->first.saddr]--;
       focus_pod_ip[it->first.daddr]--;
-      if(!focus_pod_ip[it->first.saddr]) focus_pod_ip.erase(it->first.saddr);
-      if(!focus_pod_ip[it->first.daddr]) focus_pod_ip.erase(it->first.daddr);
+      if (!focus_pod_ip[it->first.saddr]) focus_pod_ip.erase(it->first.saddr);
+      if (!focus_pod_ip[it->first.daddr]) focus_pod_ip.erase(it->first.daddr);
       focus_pod_map.erase(it++);
-    }else{
+    } else {
       it++;
     }
   }
   *evt_len = evtcnt;
-
 }
