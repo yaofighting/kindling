@@ -6,6 +6,14 @@
 void tcp_analyer_base::add_focus_container_interface_by_user(string name){
   focus_container_interface_by_user[name] = 1;
 }
+
+bool  tcp_analyer_base::is_container_interface(uint32_t ifindex) {
+  if(ifindex_type_map[ifindex] == CONTAINER_INTERFACE){
+    return true;
+  } else{
+    return false;
+  }
+}
 /*
   For calico network: we can get container interface(ip, ifindex) from route table.
   For flannel+VXLAN network: we can't get container interface, so we get the cni0 interface to use. 

@@ -38,6 +38,8 @@ public:
     interface_info cni0;
     unordered_map <uint32_t, uint32_t> ifindex_type_map;
 
+    bool is_container_interface(uint32_t ifindex);
+
     void add_focus_container_interface_by_user(string name);
 
     void init_virtual_interface_ip();

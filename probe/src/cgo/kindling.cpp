@@ -314,6 +314,7 @@ int getEvent(void** pp_kindling_event) {
     auto seq = *(uint32_t *)(ev->get_param_value_raw("seq")->m_val);
     auto ack_seq = *(uint32_t *)(ev->get_param_value_raw("ack_seq")->m_val);
     auto type = *(uint16_t *)(ev->get_param_value_raw("type")->m_val);
+    auto window = *(uint32_t *)(ev->get_param_value_raw("window")->m_val);
     //tcp raw data for net track
     rawpkt_for_net_track[nttail].tp.saddr = *(uint32_t*)(tp + 1);
     rawpkt_for_net_track[nttail].tp.sport = *(uint16_t*)(tp + 5);
@@ -347,8 +348,13 @@ int getEvent(void** pp_kindling_event) {
       //   cout << "buffer tail = %d\n" << tail << endl;
       // }
     }
+    //cout<<"ifindex:"<<*(uint32_t*)ifindex<<" window:"<<window<<endl;
 
-    return 0;
+    if(tp_analyzer->is_container_interface(*(uint32_t*)ifindex) && window == 0){
+    }else{
+      return 0;
+    }
+
   }
 
   sinsp_fdinfo_t* fdInfo = ev->get_fd_info();
@@ -519,6 +525,17 @@ int getEvent(void** pp_kindling_event) {
       auto pTuple = ev->get_param_value_raw("tuple");
       userAttNumber = setTuple(p_kindling_event, pTuple, userAttNumber);
       break;
+    }
+    case PPME_TCP_PACKET_ANALYSIS_E: {
+      auto pTuple = ev->get_param_value_raw("tuple");
+      userAttNumber = setTuple(p_kindling_event, pTuple, userAttNumber);
+      auto pWindow = ev->get_param_value_raw("window");
+      strcpy(p_kindling_event->userAttributes[userAttNumber].key, "window");
+      memcpy(p_kindling_event->userAttributes[userAttNumber].value, pWindow->m_val,
+             pWindow->m_len);
+      p_kindling_event->userAttributes[userAttNumber].len = pWindow->m_len;
+      p_kindling_event->userAttributes[userAttNumber].valueType = UINT32;
+      userAttNumber++;
     }
     default: {
       uint16_t paramsNumber = ev->get_num_params();
