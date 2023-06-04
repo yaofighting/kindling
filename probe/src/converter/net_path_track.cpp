@@ -132,7 +132,7 @@ void net_path_track::analyze_pod_net_track(tcp_raw_data raw_data[], int head, in
          is_ip_from_cni0_network(raw_data[i].tp.daddr)) ||
         (focus_pod_ip.find(raw_data[i].tp.saddr) == focus_pod_ip.end() &&
          focus_pod_ip.find(raw_data[i].tp.daddr) == focus_pod_ip.end())) {
-      return;
+      continue;
     }
     //    cout<<"ts:"<<ev_ts<<endl;
     //    printf("push into ip_to_seq_map... saddr = %u, daddr = %u, seq = %u\n", tp.saddr,
@@ -164,9 +164,9 @@ void net_path_track::consume_pod_track_by_seq(kindling_event_t_for_go evt[], int
     evtcnt++;
 //    printf("consume_pod_track_by_seq...sip = %u, dip = %u, sport = %d, dport =%d, ifindex = %d, seq = %u, timestamp = %llu\n",
 //      event.tp.saddr, event.tp.daddr, event.tp.sport, event.tp.dport, event.tp.ifindex, event.seq, event.timestamp);
-    pod_track_map.erase(seq);
-    if(evtcnt >= maxlen) return;
+    if(evtcnt >= maxlen) break;
   }
+  pod_track_map.erase(seq);
 }
 
 template <typename T1, typename T2, typename MAP_T>
